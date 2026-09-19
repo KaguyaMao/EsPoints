@@ -2,9 +2,9 @@ Manifest-Version: 1.0
 Specification-Title: espoints
 Specification-Vendor: Hydroceder
 Specification-Version: 1
-Implementation-Title: espetro-HCR
+Implementation-Title: EsPoints
 Implementation-Version: 1.1.1b
 Implementation-Vendor: Hydroceder
-Implementation-Timestamp: 2026-08-28T18:27:38+0800
+Implementation-Timestamp: 2026-09-05T00:03:13+0800
 MixinConfigs: espoints.mixins.json
 
