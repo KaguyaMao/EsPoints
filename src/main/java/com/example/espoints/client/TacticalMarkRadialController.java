@@ -238,9 +238,18 @@ public final class TacticalMarkRadialController {
         return EspetroTeamBridge.canPlaceTacticalMarkerClientHint(p);
     }
 
-    /** PingController mixin 使用：只在 Espetro 活跃战场接管默认 Ping Wheel。 */
+    /**
+     * PingController mixin 使用：只在"本地玩家确有标点权限"且"正在按住标点键"时接管默认 Ping Wheel。
+     * <p>普通成员（无权限）完全不压制 ⇒ 原版标点照常可用；
+     * 松开瞬间不再压制 ⇒ 短按补发的原版标点能被 poll 到。</p>
+     */
     public static boolean shouldSuppressDefaultPing() {
-        return isActiveBattlefield(Minecraft.getInstance());
+        Minecraft mc = Minecraft.getInstance();
+        if (!isActiveBattlefield(mc) || mc.player == null) {
+            return false;
+        }
+        return EspetroTeamBridge.canPlaceTacticalMarkerClientHint(mc.player)
+            && InputUtils.KEY_BINDING_PING.isDown();
     }
 
     static List<String> menuSlotIds() {
