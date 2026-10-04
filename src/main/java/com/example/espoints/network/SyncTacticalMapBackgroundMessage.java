@@ -89,9 +89,22 @@ public final class SyncTacticalMapBackgroundMessage {
         applyOnClient(descriptor);
     }
 
-    public static void sendDescriptorOnly(ServerPlayer player) {
+    /**
+     * 下发地图 descriptor。
+     *
+     * @return true 表示这次真的发出去了；同一 (session, sha256) 在该玩家的自愈周期内不会重复下发
+     *         （订阅续订因此只续 TTL，不再触发 descriptor + 预览瓦片的重复下发）。
+     */
+    public static boolean sendDescriptorOnly(ServerPlayer player) {
         TacticalMapTileService.Descriptor descriptor =
             TacticalMapTileService.get().descriptor();
+        if (player == null) {
+            return false;
+        }
+        if (!TacticalMapTileService.get().shouldSendDescriptor(
+                player.getUUID(), descriptor.session(), descriptor.sha256())) {
+            return false;
+        }
         NetworkHandler.INSTANCE.send(
             PacketDistributor.PLAYER.with(() -> player),
             new SyncTacticalMapBackgroundMessage(descriptor));
@@ -101,30 +114,34 @@ public final class SyncTacticalMapBackgroundMessage {
                 player.getGameProfile().getName(), descriptor.session(),
                 descriptor.width(), descriptor.height(), descriptor.maxLevel());
         }
+        return true;
     }
 
+    /**
+     * 登录/重连时下发 descriptor。
+     * <p>这里**不再**主动入队预览瓦片：预览与首屏瓦片改为玩家真正打开地图后由视口推送或客户端显式请求，
+     * 避免"一进服就灌 277 KB 大包"把上行打满、导致 KeepAlive 超时被踢。</p>
+     */
     public static void sendToPlayer(ServerPlayer player) {
         sendDescriptorOnly(player);
-        TacticalMapTileService.Descriptor descriptor =
-            TacticalMapTileService.get().descriptor();
-        if (player != null && descriptor.present()) {
-            TacticalMapTileService.get().enqueuePreviewOnce(player.getUUID());
-        }
     }
 
     public static void broadcastToAll() {
+        var server = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
         TacticalMapTileService.Descriptor descriptor =
             TacticalMapTileService.get().descriptor();
-        // PacketDistributor.ALL 与战术地图 JSON 配置走同一条已验证可达的本地/远程通道。
-        NetworkHandler.INSTANCE.send(
-            PacketDistributor.ALL.noArg(),
-            new SyncTacticalMapBackgroundMessage(descriptor));
-        var server = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
-        if (server == null || !descriptor.present()) {
+        if (server == null) {
             return;
         }
+        // 逐个下发（带"同 descriptor 不重复"判断）；预览瓦片同样不在此处推送。
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            TacticalMapTileService.get().enqueuePreviewOnce(player.getUUID());
+            if (!TacticalMapTileService.get().shouldSendDescriptor(
+                    player.getUUID(), descriptor.session(), descriptor.sha256())) {
+                continue;
+            }
+            NetworkHandler.INSTANCE.send(
+                PacketDistributor.PLAYER.with(() -> player),
+                new SyncTacticalMapBackgroundMessage(descriptor));
         }
     }
 }

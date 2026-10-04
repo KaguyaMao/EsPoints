@@ -93,10 +93,10 @@ public final class ClientTacticalMapTileCache {
             ? TacticalMapTileService.Descriptor.EMPTY : incoming;
         if (descriptor.session() == normalized.session()
             && descriptor.sha256().equals(normalized.sha256())) {
-            if (normalized.present()) {
-                request(normalized.maxLevel(), 0, 0);
-                tryLoadLocalPreview(normalized);
-            }
+            // 同一份 descriptor：不再重复请求预览、也不重建纹理。
+            // 之前这里会 request(preview) + tryLoadLocalPreview()，而客户端订阅续订会被服务端回一次
+            // descriptor，于是同一张 277 KB 预览瓦片被反复请求/重传（实测一次会话 46 次 ≈12 MB），
+            // 把上行占满导致 KeepAlive 超时被踢。
             return;
         }
         releaseAll();
