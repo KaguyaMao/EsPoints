@@ -4,7 +4,7 @@ import com.example.espoints.tactical.TacticalMapGrid;
 import net.minecraft.client.gui.GuiGraphics;
 import org.esradial.client.RadialUiText;
 
-/** Projection changes line density, but never the 150/50/50:3 world-space cells. */
+/** Projection changes line density, but never the 300/100/100:3 world-space cells. */
 public final class TacticalMapGridRenderer {
     public record View(int left, int top, int width, int height, double minX, double minZ, double scaleX, double scaleZ) {
         public int right() { return left + width; }
@@ -17,12 +17,13 @@ public final class TacticalMapGridRenderer {
     private TacticalMapGridRenderer() { }
     public static void drawGrid(GuiGraphics g, TacticalMapGrid grid, View v, TacticalMapGrid.Address hover) {
         // Only visit visible indices. Very distant fine lines are hidden, not rescaled.
-        lines(g, grid, v, TacticalMapGrid.SMALL, 10, 0x244E858C);
-        lines(g, grid, v, TacticalMapGrid.MEDIUM, 10, 0x556A9DA4);
-        lines(g, grid, v, TacticalMapGrid.LARGE, 4, 0xB39ECACD);
+        // 很细很淡：小格几乎只有提示作用，大格才稍明显
+        lines(g, grid, v, TacticalMapGrid.SMALL, 14, 0x144E858C);
+        lines(g, grid, v, TacticalMapGrid.MEDIUM, 14, 0x2A6A9DA4);
+        lines(g, grid, v, TacticalMapGrid.LARGE, 4, 0x669ECACD);
         if (hover != null) {
-            box(g, grid, v, grid.largeX(hover), grid.largeZ(hover), 150, 0x557BC9C5, false);
-            box(g, grid, v, grid.mediumX(hover), grid.mediumZ(hover), 50, 0x667BC9C5, false);
+            box(g, grid, v, grid.largeX(hover), grid.largeZ(hover), TacticalMapGrid.LARGE, 0x447BC9C5, false);
+            box(g, grid, v, grid.mediumX(hover), grid.mediumZ(hover), TacticalMapGrid.MEDIUM, 0x557BC9C5, false);
             box(g, grid, v, grid.smallX(hover), grid.smallZ(hover), TacticalMapGrid.SMALL, 0x387BC9C5, true);
             box(g, grid, v, grid.smallX(hover), grid.smallZ(hover), TacticalMapGrid.SMALL, 0xFFADF4E3, false);
         }
@@ -64,12 +65,11 @@ public final class TacticalMapGridRenderer {
             numbers(g, grid, v, grid.largeX(hover), grid.largeZ(hover), 50, 0xFFB6D9DA, smallNumbers ? hover.medium() : -1,tooltip);
             numbers(g, grid, v, grid.mediumX(hover), grid.mediumZ(hover), TacticalMapGrid.SMALL, 0xFFE4FFF8, -1,tooltip);
         }
-        final int ruler = 15;
-        g.fill(v.left, v.top, v.right(), v.top + ruler, 0xE51C3038);
-        g.fill(v.left, v.top, v.left + ruler, v.bottom(), 0xE51C3038);
+        final int ruler = 13;
+        // 需求：取消上方/左侧大格坐标的背景色（不再画刻度条底色）
         rulerLabels(g, grid, v, true, ruler);
         rulerLabels(g, grid, v, false, ruler);
-        if (interactive && v.width >= 260) {
+        if (false) {
             String legend = "大格150 · 中格50 · 小格16⅔";
             int w = (int) Math.ceil(RadialUiText.width(legend,9,500));
             g.fill(v.left + 18, v.bottom() - 13, v.left + 22 + w, v.bottom(), 0xC91C3038);
@@ -85,7 +85,7 @@ public final class TacticalMapGridRenderer {
     }
     private record Tooltip(int x,int y,int width,int height,String label,String detail) { }
     private static Tooltip tooltip(View v,TacticalMapGrid.Address hover,double mouseX,double mouseY,String markerCoordinates,boolean interactive) {
-        if (hover == null || !interactive || mouseX < v.left + 15 || mouseY < v.top + 15) return null;
+        if (hover == null || !interactive || mouseX < v.left + 13 || mouseY < v.top + 13) return null;
         String label = hover.label();
         String detail = markerCoordinates == null ? "X: " + (long) Math.floor(v.worldX(mouseX)) + "  Z: " + (long) Math.floor(v.worldZ(mouseY)) : markerCoordinates;
         int width = Math.min(v.width,(int)Math.ceil(Math.max(RadialUiText.width(label,9,600),RadialUiText.width(detail,9,500)))+10), height = 28;
@@ -101,12 +101,12 @@ public final class TacticalMapGridRenderer {
             if (row * 3 + column + 1 == skip || x + (column + .5) * step >= grid.maxX() || z + (row + .5) * step >= grid.maxZ()) continue;
             String text = Integer.toString(row * 3 + column + 1);
             int sx = v.x(x + (column + .5) * step), sy = v.y(z + (row + .5) * step);
-            double textWidth = RadialUiText.width(text,9,600);
-            if (sx-textWidth/2 < v.left+15 || sx+textWidth/2 > v.right()-1
-                || sy-5 < v.top+15 || sy+6 > v.bottom()-1) continue;
+            double textWidth = RadialUiText.width(text,7,400);
+            if (sx-textWidth/2 < v.left+13 || sx+textWidth/2 > v.right()-1
+                || sy-5 < v.top+13 || sy+6 > v.bottom()-1) continue;
             if (tooltip != null && sx+textWidth/2 > tooltip.x() && sx-textWidth/2 < tooltip.x()+tooltip.width()
                 && sy+6 > tooltip.y() && sy-5 < tooltip.y()+tooltip.height()) continue;
-            RadialUiText.draw(g,text,sx-textWidth/2,sy-5,color,9,600);
+            RadialUiText.draw(g,text,sx-textWidth/2,sy-4,color,7,400);
         }
     }
     private static void rulerLabels(GuiGraphics g, TacticalMapGrid grid, View v, boolean horizontal, int ruler) {
@@ -121,18 +121,18 @@ public final class TacticalMapGridRenderer {
             if (b <= a) continue;
             int center = (int) Math.round(start + ((a + b) / 2 - minView) * scale);
             String label = horizontal ? TacticalMapGrid.columnLabel(i) : Long.toString(i + 1);
-            double textWidth=RadialUiText.width(label,9,600);
+            double textWidth=RadialUiText.width(label,6,400);
             if (horizontal) {
-                String fitted=RadialUiText.fit(label,Math.max(0,(b-a)*scale-4),9,600);
-                if (!fitted.isEmpty()) RadialUiText.draw(g,fitted,center-RadialUiText.width(fitted,9,600)/2,v.top+2,0xFFD8F5F1,9,600);
+                String fitted=RadialUiText.fit(label,Math.max(0,(b-a)*scale-4),6,400);
+                if (!fitted.isEmpty()) RadialUiText.draw(g,fitted,center-RadialUiText.width(fitted,6,400)/2,v.top+2,0xCCEAFBF7,6,400);
             }
             else {
                 if (center-5 < v.top+ruler || center+6 > v.bottom()) continue;
                 // Rows with multiple digits remain readable in a narrow ruler.
-                float textScale = (float)Math.min(1,12/Math.max(1,textWidth));
+                float textScale = (float)Math.min(1,8/Math.max(1,textWidth));
                 g.pose().pushPose();
                 g.pose().translate(v.left + ruler / 2.0, center, 0); g.pose().scale(textScale, textScale, 1);
-                RadialUiText.draw(g,label,-textWidth/2,-5,0xFFD8F5F1,9,600);g.pose().popPose();
+                RadialUiText.draw(g,label,-textWidth/2,-4,0xCCEAFBF7,6,400);g.pose().popPose();
             }
         }
     }

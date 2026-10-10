@@ -4,9 +4,9 @@ import java.util.Optional;
 
 /** Fixed world-space grid. Its origin is the configured map corner, never the viewport. */
 public record TacticalMapGrid(double minX, double minZ, double maxX, double maxZ) {
-    public static final double LARGE = 150;
-    public static final double MEDIUM = 50;
-    public static final double SMALL = 50.0 / 3;
+    public static final double LARGE = 300;
+    public static final double MEDIUM = 100;
+    public static final double SMALL = 100.0 / 3;
     public TacticalMapGrid {
         if (!Double.isFinite(minX) || !Double.isFinite(minZ) || !Double.isFinite(maxX)
                 || !Double.isFinite(maxZ) || maxX <= minX || maxZ <= minZ)

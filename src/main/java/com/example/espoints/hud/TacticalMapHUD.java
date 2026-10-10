@@ -155,6 +155,10 @@ public class TacticalMapHUD implements IGuiOverlay {
     
     private boolean isMapVisible = false; // 地图是否可见
     private double visibleWorldSpan = -1.0D;
+    /** 缩放目标跨度：visibleWorldSpan 每帧向它插值，做出丝滑的放大/缩小过渡。 */
+    private double targetWorldSpan = -1.0D;
+    /** 插值速度（每帧逼近目标的比例）。 */
+    private static final double ZOOM_SMOOTHING = 0.25D;
     private List<CapturePoint> allPoints = List.of();
     private List<SyncBastionsMessage.BastionInfo> visibleBastions = List.of();
     private List<SyncBastionsMessage.BaseInfo> visibleBases = List.of();
@@ -337,7 +341,7 @@ public class TacticalMapHUD implements IGuiOverlay {
         TacticalMapJsonConfig.TacticalMapBounds bounds = getCurrentBounds(config);
         ensureVisibleSpan(config, bounds);
         // 缩小（看全图）最多到「整图可见」跨度，不再受 bounds.size() 限制。
-        visibleWorldSpan = Math.min(wholeMapSpan(bounds), visibleWorldSpan * ZOOM_FACTOR);
+        targetWorldSpan = Math.min(wholeMapSpan(bounds), currentTargetSpan() * ZOOM_FACTOR);
         preserveCustomViewportCenter(bounds);
     }
 
@@ -345,8 +349,21 @@ public class TacticalMapHUD implements IGuiOverlay {
         TacticalMapJsonConfig config = TacticalMapJsonConfig.getInstance();
         TacticalMapJsonConfig.TacticalMapBounds bounds = getCurrentBounds(config);
         ensureVisibleSpan(config, bounds);
-        visibleWorldSpan = Math.max(config.getMinimumRange(bounds), visibleWorldSpan / ZOOM_FACTOR);
+        targetWorldSpan = Math.max(config.getMinimumRange(bounds), currentTargetSpan() / ZOOM_FACTOR);
         preserveCustomViewportCenter(bounds);
+    }
+
+    /** 当前缩放目标（未经插值的期望跨度）。 */
+    private double currentTargetSpan() {
+        return targetWorldSpan > 0.0D && !Double.isNaN(targetWorldSpan) ? targetWorldSpan : visibleWorldSpan;
+    }
+
+    /** 每帧把 visibleWorldSpan 向目标逼近，形成放大/缩小的平滑过渡。 */
+    private void stepZoomAnimation() {
+        if (targetWorldSpan <= 0.0D || Double.isNaN(targetWorldSpan)) { targetWorldSpan = visibleWorldSpan; return; }
+        double diff = targetWorldSpan - visibleWorldSpan;
+        if (Math.abs(diff) <= Math.max(0.5D, targetWorldSpan * 0.0015D)) { visibleWorldSpan = targetWorldSpan; return; }
+        visibleWorldSpan += diff * ZOOM_SMOOTHING;
     }
 
     public void zoomFromMouseWheel(double delta) {
@@ -384,6 +401,7 @@ public class TacticalMapHUD implements IGuiOverlay {
         lastFriendlyVehicleFrame = 0L;
         isMapVisible = false;
         visibleWorldSpan = -1.0D;
+        targetWorldSpan = -1.0D;
         draggingMap = false;
         customMapCenter = false;
         lastSubscriptionHeartbeatMs = 0L;
@@ -462,6 +480,7 @@ public class TacticalMapHUD implements IGuiOverlay {
         if (!isMapVisible) {
             return;
         }
+        stepZoomAnimation();
         ensureTacticalMapSubscription();
         
         int margin = 8;
@@ -475,6 +494,7 @@ public class TacticalMapHUD implements IGuiOverlay {
     }
 
     public void renderEmbeddedMap(GuiGraphics guiGraphics, int mapLeft, int mapTop, int mapWidth, int mapHeight, float partialTick) {
+        stepZoomAnimation();
         ensureTacticalMapSubscription();
         Minecraft minecraft = Minecraft.getInstance();
         Object currentScreen = minecraft.screen;
@@ -1076,7 +1096,8 @@ public class TacticalMapHUD implements IGuiOverlay {
 
         renderSelectedDeploymentFrame(guiGraphics, content);
 
-        if (config.showGrid) {
+        // 右键菜单（标点轮盘）打开时不画坐标刻度：它们会盖住菜单，且此时也不需要坐标。
+        if (config.showGrid && !markerWheel.active()) {
             TacticalMapGridRenderer.drawChrome(guiGraphics, grid, gridView, gridHover, markerHoverMouseX, markerHoverMouseY,
                 hoveredMapMarker == null ? null : "标记 X: " + hoveredMapMarker.x + "  Z: " + hoveredMapMarker.z,
                 showInteractionChrome);
@@ -2247,6 +2268,7 @@ public class TacticalMapHUD implements IGuiOverlay {
     private void resetVisibleSpan(TacticalMapJsonConfig config) {
         TacticalMapJsonConfig.TacticalMapBounds bounds = getCurrentBounds(config);
         visibleWorldSpan = wholeMapSpan(bounds);
+        targetWorldSpan = visibleWorldSpan;
     }
 
     private void ensureVisibleSpan(TacticalMapJsonConfig config, TacticalMapJsonConfig.TacticalMapBounds bounds) {
@@ -2256,6 +2278,8 @@ public class TacticalMapHUD implements IGuiOverlay {
         }
         // 上界为「整图可见」跨度：放大（span 减小）可自由超过旧 bounds.size()，缩小（看全图）停在此。
         visibleWorldSpan = Mth.clamp(visibleWorldSpan, min, wholeMapSpan(bounds));
+        targetWorldSpan = targetWorldSpan <= 0.0D || Double.isNaN(targetWorldSpan)
+            ? visibleWorldSpan : Mth.clamp(targetWorldSpan, min, wholeMapSpan(bounds));
     }
 
     private void preserveCustomViewportCenter(TacticalMapJsonConfig.TacticalMapBounds bounds) {
