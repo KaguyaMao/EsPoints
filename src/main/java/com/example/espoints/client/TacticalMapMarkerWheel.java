@@ -46,7 +46,7 @@ public final class TacticalMapMarkerWheel {
         }).stream().collect(Collectors.toMap(RadialMenuData::id, Function.identity()));
         menu = RadialLayouts.apply(pages.get(TacticalMarkRadialController.pageId("")));
         renderer = new AuiRadialRenderer();
-        renderer.setInputHint("左键选择 · 上方返回 · Esc取消");
+        renderer.setInputHint("左键选择 · 内圈返回 · Esc取消");
         try {
             if (!renderer.open(menu)) { close(); return false; }
             session = new RadialSession<>(menu.page(), reason -> close());

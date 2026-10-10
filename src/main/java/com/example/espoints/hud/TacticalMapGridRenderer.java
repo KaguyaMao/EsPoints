@@ -1,8 +1,8 @@
 package com.example.espoints.hud;
 
 import com.example.espoints.tactical.TacticalMapGrid;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import org.esradial.client.RadialUiText;
 
 /** Projection changes line density, but never the 150/50/50:3 world-space cells. */
 public final class TacticalMapGridRenderer {
@@ -56,7 +56,7 @@ public final class TacticalMapGridRenderer {
     }
     public static void drawChrome(GuiGraphics g, TacticalMapGrid grid, View v, TacticalMapGrid.Address hover,
                                   double mouseX, double mouseY, String markerCoordinates, boolean interactive) {
-        var font = Minecraft.getInstance().font;
+        RadialUiText.beginFrame();
         // Detail numbers are local to the hovered parent: no wall of tiny labels.
         if (hover != null) {
             boolean smallNumbers = TacticalMapGrid.SMALL * v.scaleX >= 25 && TacticalMapGrid.SMALL * v.scaleZ >= 20;
@@ -70,22 +70,22 @@ public final class TacticalMapGridRenderer {
         rulerLabels(g, grid, v, false, ruler);
         if (interactive && v.width >= 260) {
             String legend = "大格150 · 中格50 · 小格16⅔";
-            int w = font.width(legend);
+            int w = (int) Math.ceil(RadialUiText.width(legend,9,500));
             g.fill(v.left + 18, v.bottom() - 13, v.left + 22 + w, v.bottom(), 0xC91C3038);
-            g.drawString(font, legend, v.left + 20, v.bottom() - 11, 0xFFC8DDDF, false);
+            RadialUiText.draw(g,legend,v.left+20,v.bottom()-11,0xFFC8DDDF,9,500);
         }
         if (hover == null || !interactive || mouseX < v.left + ruler || mouseY < v.top + ruler) return;
         String label = hover.label();
         String detail = markerCoordinates == null ? "X: " + (long) Math.floor(v.worldX(mouseX)) + "  Z: " + (long) Math.floor(v.worldZ(mouseY)) : markerCoordinates;
-        int width = Math.min(v.width, Math.max(font.width(label), font.width(detail)) + 10), height = 28;
+        int width = Math.min(v.width,(int)Math.ceil(Math.max(RadialUiText.width(label,9,600),RadialUiText.width(detail,9,500)))+10), height = 28;
         int x = (int) mouseX + 12, y = (int) mouseY + 12;
         if (x + width > v.right()) x = (int) mouseX - width - 10;
         if (y + height > v.bottom()) y = (int) mouseY - height - 10;
         x = Math.max(v.left, Math.min(v.right() - width, x)); y = Math.max(v.top, Math.min(v.bottom() - height, y));
         g.fill(x, y, x + width, y + height, 0xF01C3038);
         g.renderOutline(x, y, width, height, 0xFF8FC7C4);
-        g.drawString(font, label, x + 5, y + 4, 0xFFE4FFF8, false);
-        g.drawString(font, detail, x + 5, y + 16, 0xFFAFC3C7, false);
+        RadialUiText.draw(g,RadialUiText.fit(label,width-10,9,600),x+5,y+3,0xFFE4FFF8,9,600);
+        RadialUiText.draw(g,RadialUiText.fit(detail,width-10,9,500),x+5,y+15,0xFFAFC3C7,9,500);
     }
     private static void numbers(GuiGraphics g, TacticalMapGrid grid, View v, double x, double z, double step, int color, int skip) {
         if (step * v.scaleX < 25 || step * v.scaleZ < 20) return;
@@ -93,7 +93,10 @@ public final class TacticalMapGridRenderer {
             if (row * 3 + column + 1 == skip || x + (column + .5) * step >= grid.maxX() || z + (row + .5) * step >= grid.maxZ()) continue;
             String text = Integer.toString(row * 3 + column + 1);
             int sx = v.x(x + (column + .5) * step), sy = v.y(z + (row + .5) * step);
-            g.drawString(Minecraft.getInstance().font, text, sx - 3, sy - 4, color, false);
+            double textWidth = RadialUiText.width(text,9,600);
+            if (sx-textWidth/2 < v.left+15 || sx+textWidth/2 > v.right()-1
+                || sy-5 < v.top+15 || sy+6 > v.bottom()-1) continue;
+            RadialUiText.draw(g,text,sx-textWidth/2,sy-5,color,9,600);
         }
     }
     private static void rulerLabels(GuiGraphics g, TacticalMapGrid grid, View v, boolean horizontal, int ruler) {
@@ -108,14 +111,18 @@ public final class TacticalMapGridRenderer {
             if (b <= a) continue;
             int center = (int) Math.round(start + ((a + b) / 2 - minView) * scale);
             String label = horizontal ? TacticalMapGrid.columnLabel(i) : Long.toString(i + 1);
-            var font = Minecraft.getInstance().font;
-            if (horizontal) g.drawString(font, label, center - font.width(label) / 2, v.top + 3, 0xFFD8F5F1, false);
+            double textWidth=RadialUiText.width(label,9,600);
+            if (horizontal) {
+                String fitted=RadialUiText.fit(label,Math.max(0,(b-a)*scale-4),9,600);
+                if (!fitted.isEmpty()) RadialUiText.draw(g,fitted,center-RadialUiText.width(fitted,9,600)/2,v.top+2,0xFFD8F5F1,9,600);
+            }
             else {
+                if (center-5 < v.top+ruler || center+6 > v.bottom()) continue;
                 // Rows with multiple digits remain readable in a narrow ruler.
-                float textScale = Math.min(1, 12f / Math.max(1, font.width(label)));
+                float textScale = (float)Math.min(1,12/Math.max(1,textWidth));
                 g.pose().pushPose();
                 g.pose().translate(v.left + ruler / 2.0, center, 0); g.pose().scale(textScale, textScale, 1);
-                g.drawString(font, label, -font.width(label) / 2, -4, 0xFFD8F5F1, false); g.pose().popPose();
+                RadialUiText.draw(g,label,-textWidth/2,-5,0xFFD8F5F1,9,600);g.pose().popPose();
             }
         }
     }
