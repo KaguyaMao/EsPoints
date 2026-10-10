@@ -178,12 +178,26 @@ public final class TacticalMarkRadialController {
             reset();
             return;
         }
+        // 只有能放置战术标点的玩家才接管标点键；普通成员完全不干预，
+        // Ping Wheel 原版标点（按住期间的默认行为）照常工作。
+        if (!canLocalPlace()) {
+            heldTicks = 0;
+            consumedUntilRelease = false;
+            return;
+        }
         // Ping Wheel 在 tick start 已经排队；战局内由本轮盘接管，立即撤销默认标点。
         PingController.revokePingAction();
         boolean down = InputUtils.KEY_BINDING_PING.isDown();
         if (!down) {
+            int held = heldTicks;
+            boolean wasDown = held > 0;
+            boolean consumed = consumedUntilRelease;
             heldTicks = 0;
             consumedUntilRelease = false;
+            // 短按（未到 OPEN_DELAY_TICKS、也没被轮盘占用）：把这次按键交还 Ping Wheel 原版标点。
+            if (wasDown && !consumed && held < OPEN_DELAY_TICKS && mc.screen == null) {
+                queueOriginalPing(mc);
+            }
             return;
         }
         if (consumedUntilRelease || mc.screen != null) {
@@ -217,6 +231,21 @@ public final class TacticalMarkRadialController {
         }
     }
 
+    /**
+     * 把这一次按键交还给 Ping Wheel 原版标点。
+     * <p>松键后 {@link #tick} 不再撤销动作，Ping Wheel 会在下一个 client tick 正常处理。</p>
+     */
+    private static void queueOriginalPing(Minecraft mc) {
+        if (mc == null || mc.screen != null) {
+            return;
+        }
+        try {
+            PingController.queuePingAction();
+        } catch (Throwable t) {
+            ModLogger.warn("补发原版标点失败: " + t);
+        }
+    }
+
     private static void requestMarkersIfStale() {
         long now = System.currentTimeMillis();
         if (now - lastRequestMarkersMs < 1500L) {
@@ -237,9 +266,18 @@ public final class TacticalMarkRadialController {
         return EspetroTeamBridge.canPlaceTacticalMarkerClientHint(p);
     }
 
-    /** PingController mixin 使用：只在 Espetro 活跃战场接管默认 Ping Wheel。 */
+    /**
+     * PingController mixin 使用：只在"本地玩家确有标点权限"且"正在按住标点键"时接管默认 Ping Wheel。
+     * <p>普通成员（无权限）完全不压制 ⇒ 原版标点照常可用；
+     * 松开瞬间不再压制 ⇒ 短按补发的原版标点能被 poll 到。</p>
+     */
     public static boolean shouldSuppressDefaultPing() {
-        return isActiveBattlefield(Minecraft.getInstance());
+        Minecraft mc = Minecraft.getInstance();
+        if (!isActiveBattlefield(mc) || mc.player == null) {
+            return false;
+        }
+        return EspetroTeamBridge.canPlaceTacticalMarkerClientHint(mc.player)
+            && InputUtils.KEY_BINDING_PING.isDown();
     }
 
     static List<String> menuSlotIds() {

@@ -51,6 +51,8 @@ public final class TacticalMapTileService {
     private static final int WORK_QUEUE_CAPACITY = 512;
     private static final int MAX_SEND_ATTEMPTS_PER_TICK = 64;
     private static final long PREVIEW_RESEND_MILLIS = 8_000L;
+    /** 同一 descriptor 在该周期内不重复下发（自愈兜底周期）。 */
+    private static final long DESCRIPTOR_RESYNC_MILLIS = 30_000L;
     private static final byte[] PNG_SIGNATURE = {
         (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a
     };
@@ -76,6 +78,16 @@ public final class TacticalMapTileService {
     private final Map<TacticalMapTileKey, Set<UUID>> waiters = new ConcurrentHashMap<>();
     private final Map<UUID, ViewportHint> playerViewports = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lastPreviewEnqueueAt = new ConcurrentHashMap<>();
+    /**
+     * 已成功推送给该玩家的瓦片（玩家 → session → 键集合）。
+     * <p>客户端会周期性续订（TTL 120 tick）并重发视口，"服务器主动推送"因此极易重复发送同一张瓦片；
+     * 这里记录已推送过的键，视口/预览推送直接跳过，避免把上行带宽打满。
+     * 客户端仍可通过 {@code RequestTacticalMapTileMessage} 显式请求，那条路径不受此限制（可自愈）。</p>
+     */
+    private final Map<UUID, Map<Long, Set<TacticalMapTileKey>>> pushedTiles = new ConcurrentHashMap<>();
+    /** 已下发的 descriptor 指纹（session:sha256）与时间，用于订阅续订时不再重复下发。 */
+    private final Map<UUID, String> descriptorFingerprint = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> descriptorSentAt = new ConcurrentHashMap<>();
     private volatile ActiveState active;
 
     private TacticalMapTileService() {
@@ -146,11 +158,55 @@ public final class TacticalMapTileService {
         waiters.clear();
         playerViewports.clear();
         lastPreviewEnqueueAt.clear();
+        pushedTiles.clear();
+        descriptorFingerprint.clear();
+        descriptorSentAt.clear();
     }
 
     public Descriptor descriptor() {
         ActiveState state = active;
         return state == null ? Descriptor.EMPTY : state.descriptor;
+    }
+
+    /**
+     * descriptor 是否仍需下发。
+     * <p>同一 (session, sha256) 在该玩家身上已下发过、且未超过 {@link #DESCRIPTOR_RESYNC_MILLIS} 时返回 false，
+     * 于是"订阅续订"只续 TTL、不再重复下发 descriptor。超时后会允许一次重发作为自愈兜底
+     * （descriptor 只有几百字节，代价可忽略；真正的大流量是预览/视口瓦片）。</p>
+     */
+    public boolean shouldSendDescriptor(UUID playerId, long session, String sha256) {
+        if (playerId == null) {
+            return true;
+        }
+        String fingerprint = session + ":" + (sha256 == null ? "" : sha256);
+        long now = System.currentTimeMillis();
+        String previous = descriptorFingerprint.get(playerId);
+        Long sentAt = descriptorSentAt.get(playerId);
+        if (fingerprint.equals(previous) && sentAt != null
+            && now - sentAt < DESCRIPTOR_RESYNC_MILLIS) {
+            return false;
+        }
+        descriptorFingerprint.put(playerId, fingerprint);
+        descriptorSentAt.put(playerId, now);
+        return true;
+    }
+
+    private boolean hasPushed(UUID playerId, long session, int level, int x, int y) {
+        Map<Long, Set<TacticalMapTileKey>> perPlayer = pushedTiles.get(playerId);
+        if (perPlayer == null) {
+            return false;
+        }
+        Set<TacticalMapTileKey> keys = perPlayer.get(session);
+        return keys != null && keys.contains(new TacticalMapTileKey(session, level, x, y));
+    }
+
+    private void markPushed(UUID playerId, TacticalMapTileKey key) {
+        if (playerId == null || key == null) {
+            return;
+        }
+        pushedTiles.computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>())
+            .computeIfAbsent(key.session(), ignored -> ConcurrentHashMap.newKeySet())
+            .add(key);
     }
 
     /** Returns bytes once this tile alone is published, irrespective of full build state. */
@@ -216,6 +272,11 @@ public final class TacticalMapTileService {
         if (previous != null && now - previous < PREVIEW_RESEND_MILLIS) {
             return FairTileRequestQueue.OfferResult.DUPLICATE;
         }
+        if (hasPushed(playerId, state.descriptor.session(),
+                state.descriptor.maxLevel(), 0, 0)) {
+            // 预览瓦片已成功推送过：不再重发（客户端需要时会显式请求）。
+            return FairTileRequestQueue.OfferResult.DUPLICATE;
+        }
         FairTileRequestQueue.OfferResult result = enqueue(
             playerId, state.descriptor.session(), state.descriptor.maxLevel(), 0, 0);
         if (result == FairTileRequestQueue.OfferResult.ACCEPTED
@@ -250,6 +311,11 @@ public final class TacticalMapTileService {
     private void enqueueTiles(UUID playerId, ActiveState state,
                               List<TacticalMapPyramidLayout.TileCoordinate> tiles) {
         for (TacticalMapPyramidLayout.TileCoordinate tile : tiles) {
+            if (hasPushed(playerId, state.descriptor.session(),
+                    tile.level(), tile.x(), tile.y())) {
+                // 已推送给该玩家的瓦片不再重复入队（订阅续订会频繁走到这里）。
+                continue;
+            }
             enqueue(playerId, state.descriptor.session(),
                 tile.level(), tile.x(), tile.y());
         }
@@ -296,6 +362,7 @@ public final class TacticalMapTileService {
             }
             SyncTacticalMapTileMessage.sendToPlayer(
                 player, key.session(), key.level(), key.x(), key.y(), bytes);
+            markPushed(entry.playerId(), key);
             if (key.level() == state.descriptor.maxLevel() && key.x() == 0 && key.y() == 0) {
                 ESPointsMod.LOGGER.info("发送战术地图预览瓦片 {} -> {} ({} bytes)",
                     key, player.getGameProfile().getName(), bytes.length);
@@ -316,6 +383,9 @@ public final class TacticalMapTileService {
         transferLimiter.removePlayer(playerId);
         playerViewports.remove(playerId);
         lastPreviewEnqueueAt.remove(playerId);
+        pushedTiles.remove(playerId);
+        descriptorFingerprint.remove(playerId);
+        descriptorSentAt.remove(playerId);
         for (Map.Entry<TacticalMapTileKey, Set<UUID>> entry : waiters.entrySet()) {
             entry.getValue().remove(playerId);
             if (entry.getValue().isEmpty()) {

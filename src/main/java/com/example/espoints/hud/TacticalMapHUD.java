@@ -220,6 +220,8 @@ public class TacticalMapHUD implements IGuiOverlay {
     private int lastEmbeddedMapHeight;
     private Object lastEmbeddedMapScreen;
     private long lastEmbeddedMapRenderMs;
+    /** 实际渲染内容矩形的纵横比（高/宽，已剔除顶部标题区），保证 scaleX==scaleZ 无变形。 */
+    private double contentAspectK = -1.0D;
     private boolean compactEmbeddedRendering;
     private int lastRecenterButtonLeft = Integer.MIN_VALUE;
     private int lastRecenterButtonTop = Integer.MIN_VALUE;
@@ -334,7 +336,8 @@ public class TacticalMapHUD implements IGuiOverlay {
         TacticalMapJsonConfig config = TacticalMapJsonConfig.getInstance();
         TacticalMapJsonConfig.TacticalMapBounds bounds = getCurrentBounds(config);
         ensureVisibleSpan(config, bounds);
-        visibleWorldSpan = Math.min(bounds.size(), visibleWorldSpan * ZOOM_FACTOR);
+        // 缩小（看全图）最多到「整图可见」跨度，不再受 bounds.size() 限制。
+        visibleWorldSpan = Math.min(wholeMapSpan(bounds), visibleWorldSpan * ZOOM_FACTOR);
         preserveCustomViewportCenter(bounds);
     }
 
@@ -1647,15 +1650,14 @@ public class TacticalMapHUD implements IGuiOverlay {
                                        int titleHeight) {
         int safeTitleHeight = Mth.clamp(titleHeight, 0, Math.max(0, mapHeight - 1));
         int availableHeight = Math.max(1, mapHeight - safeTitleHeight);
-        double displayAspectRatio = getMapDisplayAspectRatio(bounds);
+        // 视口矩形 = 整个地图框：不再按地图长宽比做 contain 居中适配，放大后地图可
+        // 超出画幅填满整个框；最小缩放（整图）时靠统一的 X/Z 比例留白，无拉伸压缩。
         int width = Math.max(1, mapWidth);
-        int height = Math.max(1, (int) Math.round(width / displayAspectRatio));
-        if (height > availableHeight) {
-            height = availableHeight;
-            width = Math.max(1, (int) Math.round(height * displayAspectRatio));
-        }
-        int left = mapLeft + (mapWidth - width) / 2;
-        int top = mapTop + safeTitleHeight + (availableHeight - height) / 2;
+        int height = Math.max(1, availableHeight);
+        int left = mapLeft;
+        int top = mapTop + safeTitleHeight;
+        // 用实际内容矩形（剔除标题）的纵横比作为缩放比例，杜绝拉伸/压缩。
+        contentAspectK = (double) height / width;
 
         ensureVisibleSpan(config, bounds);
         double[] span = getViewportSpan(bounds);
@@ -1803,11 +1805,34 @@ public class TacticalMapHUD implements IGuiOverlay {
     }
 
     private double[] getViewportSpan(TacticalMapJsonConfig.TacticalMapBounds bounds, double span) {
-        double aspectRatio = bounds.aspectRatio();
-        if (bounds.width() >= bounds.height()) {
-            return new double[] {span, span / aspectRatio};
+        // 采用「地图框」的纵横比：spanZ = spanX * (boxH/boxW)，使 scaleX == scaleZ 恒定，
+        // 不因框的长宽比而拉伸/压缩地图。
+        double k = getEmbeddedViewportAspectRatio();
+        return new double[] {span, span * k};
+    }
+
+    /**
+     * 嵌入式地图（部署/小地图）视口的纵横比 = 地图框高/宽（boxH/boxW）。
+     * 保证 X/Z 缩放一致、无变形；无嵌入式框时退回 1（按正方形处理）。
+     */
+    private double getEmbeddedViewportAspectRatio() {
+        // 优先使用最近渲染帧的实际内容矩形比例（剔除标题），保证 scaleX==scaleZ。
+        if (contentAspectK > 0.0D) {
+            return contentAspectK;
         }
-        return new double[] {span * aspectRatio, span};
+        if (lastEmbeddedMapWidth > 0 && lastEmbeddedMapHeight > 0) {
+            return (double) lastEmbeddedMapHeight / lastEmbeddedMapWidth;
+        }
+        return 1.0D;
+    }
+
+    /**
+     * 最小（整图）缩放对应的 span：在框纵横比 k 下，要看到整张地图需满足
+     * spanX >= 地图宽 且 spanX * k >= 地图高。
+     */
+    private double wholeMapSpan(TacticalMapJsonConfig.TacticalMapBounds bounds) {
+        double k = Math.max(0.001D, getEmbeddedViewportAspectRatio());
+        return Math.max(bounds.width(), bounds.height() / k);
     }
 
     private double getMapDisplayAspectRatio(TacticalMapJsonConfig.TacticalMapBounds bounds) {
@@ -2239,15 +2264,16 @@ public class TacticalMapHUD implements IGuiOverlay {
 
     private void resetVisibleSpan(TacticalMapJsonConfig config) {
         TacticalMapJsonConfig.TacticalMapBounds bounds = getCurrentBounds(config);
-        visibleWorldSpan = config.getInitialRange(bounds);
+        visibleWorldSpan = wholeMapSpan(bounds);
     }
 
     private void ensureVisibleSpan(TacticalMapJsonConfig config, TacticalMapJsonConfig.TacticalMapBounds bounds) {
         double min = config.getMinimumRange(bounds);
         if (visibleWorldSpan <= 0.0D || Double.isNaN(visibleWorldSpan)) {
-            visibleWorldSpan = config.getInitialRange(bounds);
+            visibleWorldSpan = wholeMapSpan(bounds);
         }
-        visibleWorldSpan = Mth.clamp(visibleWorldSpan, min, bounds.size());
+        // 上界为「整图可见」跨度：放大（span 减小）可自由超过旧 bounds.size()，缩小（看全图）停在此。
+        visibleWorldSpan = Mth.clamp(visibleWorldSpan, min, wholeMapSpan(bounds));
     }
 
     private void preserveCustomViewportCenter(TacticalMapJsonConfig.TacticalMapBounds bounds) {
