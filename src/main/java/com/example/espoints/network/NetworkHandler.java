@@ -10,7 +10,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
  * 网络处理器类
  */
 public class NetworkHandler {
-    public static final String PROTOCOL_VERSION = "15";
+    public static final String PROTOCOL_VERSION = "16";
     
     public static final SimpleChannel INSTANCE = NetworkRegistry.newSimpleChannel(
         ResourceLocation.fromNamespaceAndPath(ESPointsMod.MOD_ID, "main"),
@@ -33,6 +33,9 @@ public class NetworkHandler {
      * 注册网络消息
      */
     public static void registerMessages() {
+        INSTANCE.messageBuilder(SyncFriendlyVehiclesMessage.class, nextPacketId(), NetworkDirection.PLAY_TO_CLIENT)
+            .encoder(SyncFriendlyVehiclesMessage::encode).decoder(SyncFriendlyVehiclesMessage::decode)
+            .consumerMainThread(SyncFriendlyVehiclesMessage::handle).add();
         INSTANCE.messageBuilder(SyncCapturePointsMessage.class, nextPacketId(), NetworkDirection.PLAY_TO_CLIENT)
             .encoder(SyncCapturePointsMessage::encode)
             .decoder(SyncCapturePointsMessage::decode)

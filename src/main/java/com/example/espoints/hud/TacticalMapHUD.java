@@ -143,9 +143,6 @@ public class TacticalMapHUD implements IGuiOverlay {
     private double lastViewMaxY = 1.0D;
     private int lastViewScreenWidth = 256;
     private int lastViewScreenHeight = 256;
-    private static final int MARKER_MENU_WIDTH = 124;
-    private static final int MARKER_MENU_HEADER_HEIGHT = 15;
-    private static final int MARKER_MENU_ROW_HEIGHT = 16;
     private static final int[] ROUTE_COLORS = {
             0xFFFF5555,
             0xFF55FF55,
@@ -163,6 +160,36 @@ public class TacticalMapHUD implements IGuiOverlay {
     private List<SyncBastionsMessage.BaseInfo> visibleBases = List.of();
     private List<SyncBastionsMessage.VehicleSupplyStationInfo> visibleVehicleSupplyStations = List.of();
     private List<TacticalMarker> visibleTacticalMarkers = List.of();
+    private com.example.espoints.network.SyncFriendlyVehiclesMessage friendlyVehicleFrame;
+    private long lastFriendlyVehicleFrame;
+    public void syncFriendlyVehicles(com.example.espoints.network.SyncFriendlyVehiclesMessage message) {
+        friendlyVehicleFrame = message; lastFriendlyVehicleFrame = System.currentTimeMillis();
+    }
+    private void renderFriendlyVehicles(GuiGraphics graphics, MapViewport viewport, String team) {
+        var mc = Minecraft.getInstance();
+        if (friendlyVehicleFrame == null || mc.level == null || mc.player == null
+            || System.currentTimeMillis() - lastFriendlyVehicleFrame > 2500
+            || !mc.level.dimension().location().toString().equals(friendlyVehicleFrame.dimension())
+            || !EspetroTeamBridge.isSameTeam(team, friendlyVehicleFrame.team())) return;
+        for (var vehicle : friendlyVehicleFrame.vehicles()) {
+            if (!viewport.containsWorld(vehicle.x(), vehicle.z())) continue;
+            double x = viewport.screenXd(vehicle.x()), y = viewport.screenYd(vehicle.z());
+            graphics.pose().pushPose();
+            try {
+                graphics.pose().translate(x, y, 0);
+                graphics.pose().mulPose(Axis.ZP.rotationDegrees(vehicle.yaw() + 180));
+                blitMapIcon(graphics, 0, 0, 12,
+                    com.example.espoints.tactical.FriendlyVehicleIcons.texture(vehicle.type()),
+                    vehicle.loaded() ? COLOR_FRIENDLY_WHITE : 0x99FFFFFF);
+            } finally { graphics.pose().popPose(); }
+            if (markerHoverEnabled && Math.hypot(markerHoverMouseX - x, markerHoverMouseY - y) < 9) {
+                String details = vehicle.name() + " · " + (vehicle.loaded()
+                    ? vehicle.passengers() == 0 ? "无人乘坐" : "乘员 " + vehicle.passengers() : "最后已知位置");
+                if (vehicle.squadId() >= 0) details += " · 小队 " + vehicle.squadId();
+                graphics.drawString(mc.font, details, (int)x + 10, (int)y - 5, COLOR_FRIENDLY_WHITE, true);
+            }
+        }
+    }
     
     // 存储从服务端同步的玩家位置
     private final Map<UUID, com.example.espoints.network.SyncPlayerPositionsMessage.PlayerPosition> syncedPlayerPositions = new HashMap<>();
@@ -202,9 +229,7 @@ public class TacticalMapHUD implements IGuiOverlay {
     private int lastRecenterButtonHeight;
     private MapViewport lastInteractiveViewport;
     private Object lastMarkerRequestScreen;
-    private boolean markerMenuVisible;
-    private int markerMenuX;
-    private int markerMenuY;
+    private final com.example.espoints.client.TacticalMapMarkerWheel markerWheel = new com.example.espoints.client.TacticalMapMarkerWheel();
     private double pendingMarkerWorldX;
     private double pendingMarkerWorldZ;
     private boolean artillerySelectionMode;
@@ -354,6 +379,9 @@ public class TacticalMapHUD implements IGuiOverlay {
     }
 
     public void clearServerSyncedBackgroundState() {
+        markerWheel.close();
+        friendlyVehicleFrame = null;
+        lastFriendlyVehicleFrame = 0L;
         isMapVisible = false;
         visibleWorldSpan = -1.0D;
         draggingMap = false;
@@ -451,7 +479,7 @@ public class TacticalMapHUD implements IGuiOverlay {
         Minecraft minecraft = Minecraft.getInstance();
         Object currentScreen = minecraft.screen;
         if (currentScreen != lastEmbeddedMapScreen) {
-            markerMenuVisible = false;
+            markerWheel.close();
             lastInteractiveViewport = null;
         }
         if (currentScreen != null && currentScreen != lastMarkerRequestScreen
@@ -475,14 +503,12 @@ public class TacticalMapHUD implements IGuiOverlay {
     }
 
     public void beginArtillerySelection() {
-        artillerySelectionMode = true;
-        markerMenuVisible = false;
+        artillerySelectionMode = true; markerWheel.close();
         suppressMapDragUntilRelease = false;
     }
 
     public void endArtillerySelection() {
-        artillerySelectionMode = false;
-        markerMenuVisible = false;
+        artillerySelectionMode = false; markerWheel.close();
         suppressMapDragUntilRelease = false;
         draggingMap = false;
         lastInteractiveViewport = null;
@@ -495,7 +521,7 @@ public class TacticalMapHUD implements IGuiOverlay {
         Minecraft minecraft = Minecraft.getInstance();
         Object currentScreen = minecraft.screen;
         if (currentScreen != lastEmbeddedMapScreen) {
-            markerMenuVisible = false;
+            markerWheel.close();
             lastInteractiveViewport = null;
         }
         if (currentScreen != null && currentScreen != lastMarkerRequestScreen
@@ -556,6 +582,7 @@ public class TacticalMapHUD implements IGuiOverlay {
     /** 部署面板等内嵌战术地图：指针在地图内时滚轮缩放。 */
     @SubscribeEvent
     public void onScreenMouseScrolled(ScreenEvent.MouseScrolled.Pre event) {
+        if (markerWheel.active()) { event.setCanceled(true); return; }
         if (isInsideLastEmbeddedMap(event.getMouseX(), event.getMouseY())) {
             zoomFromMouseWheel(event.getScrollDelta());
             event.setCanceled(true);
@@ -564,39 +591,11 @@ public class TacticalMapHUD implements IGuiOverlay {
 
     @SubscribeEvent
     public void onScreenMouseClicked(ScreenEvent.MouseButtonPressed.Pre event) {
+        if (markerWheel.mouse(event.getButton(), true)) { event.setCanceled(true); return; }
         boolean insideEmbeddedMap = isInsideLastEmbeddedMap(event.getMouseX(), event.getMouseY());
-        if (!insideEmbeddedMap && !markerMenuVisible) {
-            return;
-        }
-
-        if (markerMenuVisible) {
-            if (event.getButton() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
-                TacticalMarkerType selected = markerTypeAt(event.getMouseX(), event.getMouseY());
-                markerMenuVisible = false;
-                suppressMapDragUntilRelease = true;
-                if (selected != null) {
-                    NetworkHandler.INSTANCE.sendToServer(new PlaceTacticalMarkerMessage(
-                        selected, pendingMarkerWorldX, pendingMarkerWorldZ));
-                }
-                event.setCanceled(true);
-                return;
-            }
-            if (event.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
-                markerMenuVisible = false;
-                if (lastInteractiveViewport == null
-                        || !lastInteractiveViewport.containsScreen(event.getMouseX(), event.getMouseY())) {
-                    event.setCanceled(true);
-                    return;
-                }
-            } else {
-                markerMenuVisible = false;
-                event.setCanceled(true);
-                return;
-            }
-        }
+        if (!insideEmbeddedMap) return;
 
         if (artillerySelectionMode && event.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
-            markerMenuVisible = false;
             if (insideEmbeddedMap
                     && lastInteractiveViewport != null
                     && lastInteractiveViewport.containsScreen(event.getMouseX(), event.getMouseY())) {
@@ -642,7 +641,7 @@ public class TacticalMapHUD implements IGuiOverlay {
                 && lastInteractiveViewport.containsScreen(event.getMouseX(), event.getMouseY())) {
             pendingMarkerWorldX = lastInteractiveViewport.worldX(event.getMouseX());
             pendingMarkerWorldZ = lastInteractiveViewport.worldZ(event.getMouseY());
-            openMarkerMenu((int) event.getMouseX(), (int) event.getMouseY());
+            openMarkerMenu();
             event.setCanceled(true);
         }
     }
@@ -685,68 +684,25 @@ public class TacticalMapHUD implements IGuiOverlay {
         // 渲染鸟瞰图，包含玩家位置
         renderBirdsEyeView(guiGraphics, mapLeft, mapTop, mapWidth, mapHeight,
             allowMouseDrag, showInteractionChrome, partialTick);
-        if (allowMouseDrag && showInteractionChrome && !artillerySelectionMode) {
-            renderMarkerMenu(guiGraphics);
-        }
     }
 
-    private void renderMarkerMenu(GuiGraphics guiGraphics) {
-        if (!markerMenuVisible) {
-            return;
-        }
-        Minecraft minecraft = Minecraft.getInstance();
-        double mouseX = getGuiMouseX(minecraft);
-        double mouseY = getGuiMouseY(minecraft);
-        TacticalMarkerType[] types = TacticalMarkerType.selectableValues();
-        int menuHeight = MARKER_MENU_HEADER_HEIGHT + types.length * MARKER_MENU_ROW_HEIGHT + 4;
-        guiGraphics.fill(markerMenuX, markerMenuY, markerMenuX + MARKER_MENU_WIDTH,
-            markerMenuY + menuHeight, 0xF0181820);
-        guiGraphics.renderOutline(markerMenuX, markerMenuY, MARKER_MENU_WIDTH, menuHeight, 0xFF777788);
-        guiGraphics.drawString(minecraft.font, "选择战术标点",
-            markerMenuX + 5, markerMenuY + 4, 0xFFE6E6E6, false);
-
-        for (int i = 0; i < types.length; i++) {
-            TacticalMarkerType type = types[i];
-            int rowY = markerMenuY + MARKER_MENU_HEADER_HEIGHT + i * MARKER_MENU_ROW_HEIGHT;
-            boolean hovered = mouseX >= markerMenuX + 2 && mouseX < markerMenuX + MARKER_MENU_WIDTH - 2
-                && mouseY >= rowY && mouseY < rowY + MARKER_MENU_ROW_HEIGHT;
-            guiGraphics.fill(markerMenuX + 2, rowY, markerMenuX + MARKER_MENU_WIDTH - 2,
-                rowY + MARKER_MENU_ROW_HEIGHT, hovered ? 0xE0444455 : 0xA024242D);
-            renderTacticalMarkerIcon(guiGraphics, markerMenuX + 10,
-                rowY + MARKER_MENU_ROW_HEIGHT / 2, type);
-            guiGraphics.drawString(minecraft.font, type.getDisplayName(),
-                markerMenuX + 20, rowY + 4, type.getColor(), false);
-        }
+    @SubscribeEvent
+    public void tickMapWheel(net.minecraftforge.event.TickEvent.ClientTickEvent event) {
+        if (event.phase == net.minecraftforge.event.TickEvent.Phase.END) markerWheel.tick();
     }
-
-    private void openMarkerMenu(int clickX, int clickY) {
-        int menuHeight = MARKER_MENU_HEADER_HEIGHT
-            + TacticalMarkerType.selectableValues().length * MARKER_MENU_ROW_HEIGHT + 4;
-        int minX = lastEmbeddedMapLeft + 2;
-        int maxX = lastEmbeddedMapLeft + lastEmbeddedMapWidth - MARKER_MENU_WIDTH - 2;
-        int minY = lastEmbeddedMapTop + 2;
-        int maxY = lastEmbeddedMapTop + lastEmbeddedMapHeight - menuHeight - 2;
-
-        markerMenuX = clickX + 8;
-        if (markerMenuX + MARKER_MENU_WIDTH > lastEmbeddedMapLeft + lastEmbeddedMapWidth - 2) {
-            markerMenuX = clickX - MARKER_MENU_WIDTH - 8;
-        }
-        markerMenuX = Mth.clamp(markerMenuX, minX, Math.max(minX, maxX));
-        markerMenuY = Mth.clamp(clickY - 6, minY, Math.max(minY, maxY));
-        markerMenuVisible = true;
+    @SubscribeEvent
+    public void renderMapWheel(ScreenEvent.Render.Post event) { markerWheel.render(event.getGuiGraphics()); }
+    @SubscribeEvent
+    public void releaseMapWheel(ScreenEvent.MouseButtonReleased.Pre event) {
+        if (markerWheel.mouse(event.getButton(), false)) event.setCanceled(true);
     }
-
-    private TacticalMarkerType markerTypeAt(double mouseX, double mouseY) {
-        if (mouseX < markerMenuX + 2 || mouseX >= markerMenuX + MARKER_MENU_WIDTH - 2) {
-            return null;
-        }
-        int relativeY = (int) mouseY - markerMenuY - MARKER_MENU_HEADER_HEIGHT;
-        if (relativeY < 0) {
-            return null;
-        }
-        int index = relativeY / MARKER_MENU_ROW_HEIGHT;
-        TacticalMarkerType[] values = TacticalMarkerType.selectableValues();
-        return index >= 0 && index < values.length ? values[index] : null;
+    @SubscribeEvent
+    public void keyMapWheel(ScreenEvent.KeyPressed.Pre event) {
+        if (markerWheel.key(event.getKeyCode())) event.setCanceled(true);
+    }
+    private void openMarkerMenu() {
+        draggingMap = false; suppressMapDragUntilRelease = true;
+        markerWheel.open(pendingMarkerWorldX, pendingMarkerWorldZ);
     }
 
     private TacticalMarker findTacticalMarkerAt(double mouseX, double mouseY) {
@@ -1082,9 +1038,12 @@ public class TacticalMapHUD implements IGuiOverlay {
 
         guiGraphics.enableScissor(content.left, content.top, content.right(), content.bottom());
         renderMapBackground(guiGraphics, content);
-        if (config.showGrid) {
-            renderViewportGrid(guiGraphics, content);
-        }
+        var grid = new com.example.espoints.tactical.TacticalMapGrid(bounds.minX, bounds.minZ, bounds.maxX, bounds.maxZ);
+        var gridView = new TacticalMapGridRenderer.View(content.left, content.top, content.width, content.height,
+            content.viewMinX, content.viewMinZ, content.scaleX, content.scaleZ);
+        var gridHover = markerHoverEnabled
+            ? grid.address(gridView.worldX(markerHoverMouseX), gridView.worldZ(markerHoverMouseY)).orElse(null) : null;
+        if (config.showGrid) TacticalMapGridRenderer.drawGrid(guiGraphics, grid, gridView, gridHover);
 
         String localTeam = EspetroTeamBridge.getPlayerTeam(player);
 
@@ -1099,6 +1058,7 @@ public class TacticalMapHUD implements IGuiOverlay {
         renderBastionsOnMap(guiGraphics, content, player, false, localTeam);
 
         renderVehicleSupplyStationsOnMap(guiGraphics, content, false, localTeam);
+        renderFriendlyVehicles(guiGraphics, content, localTeam);
 
         renderTacticalMarkersOnMap(guiGraphics, content, false, localTeam);
 
@@ -1116,9 +1076,14 @@ public class TacticalMapHUD implements IGuiOverlay {
 
         renderSelectedDeploymentFrame(guiGraphics, content);
 
+        if (config.showGrid) {
+            TacticalMapGridRenderer.drawChrome(guiGraphics, grid, gridView, gridHover, markerHoverMouseX, markerHoverMouseY,
+                hoveredMapMarker == null ? null : "标记 X: " + hoveredMapMarker.x + "  Z: " + hoveredMapMarker.z,
+                showInteractionChrome);
+        }
         guiGraphics.disableScissor();
         guiGraphics.renderOutline(content.left, content.top, content.width, content.height, 0xCC000000);
-        if (showInteractionChrome) {
+        if (showInteractionChrome && !config.showGrid) {
             renderHoveredMarkerCoordinates(guiGraphics, content);
         }
     }
@@ -1496,7 +1461,8 @@ public class TacticalMapHUD implements IGuiOverlay {
                 case DEFEND_HERE -> TacticalMarkerType.DEFEND_HERE.getColor();
                 case ENEMY_INFANTRY, ENEMY_TANK, ENEMY_IFV,
                      ENEMY_LIGHT_VEHICLE, ENEMY_HELICOPTER -> COLOR_FRIENDLY_WHITE;
-                default -> COLOR_ENEMY_RED;
+                default -> com.example.espoints.tactical.TacticalMarkerIcons.isEnemyUnit(marker.type())
+                    ? COLOR_FRIENDLY_WHITE : marker.type().getColor();
             };
             int fadedColor = withOpacity(baseColor, opacity);
             renderTacticalMarkerIcon(guiGraphics, mapX, mapY, marker.type(), fadedColor);
@@ -2126,32 +2092,6 @@ public class TacticalMapHUD implements IGuiOverlay {
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
     }
 
-    private void renderViewportGrid(GuiGraphics guiGraphics, MapViewport viewport) {
-        double gridStep = chooseGridStep(Math.max(viewport.spanX, viewport.spanZ));
-        int gridColor = 0x33FFFFFF;
-
-        double firstX = Math.ceil(viewport.viewMinX / gridStep) * gridStep;
-        for (double x = firstX; x <= viewport.viewMaxX; x += gridStep) {
-            int screenX = viewport.screenX(x);
-            guiGraphics.fill(screenX, viewport.top, screenX + 1, viewport.bottom(), gridColor);
-        }
-
-        double firstZ = Math.ceil(viewport.viewMinZ / gridStep) * gridStep;
-        for (double z = firstZ; z <= viewport.viewMaxZ; z += gridStep) {
-            int screenY = viewport.screenY(z);
-            guiGraphics.fill(viewport.left, screenY, viewport.right(), screenY + 1, gridColor);
-        }
-    }
-
-    private double chooseGridStep(double span) {
-        double target = span / 8.0D;
-        double step = 16.0D;
-        while (step < target) {
-            step *= 2.0D;
-        }
-        return step;
-    }
-
     /**
      * 使用原版地图玩家标识（map_icons.png / {@link MapDecoration.Type#PLAYER}）。
      * <p>
@@ -2344,7 +2284,7 @@ public class TacticalMapHUD implements IGuiOverlay {
         hoveredMapMarker = null;
         hoveredMapMarkerDistanceSquared = Double.MAX_VALUE;
         markerHoverEnabled = false;
-        if (!allowMouseInteraction) {
+        if (!allowMouseInteraction || markerWheel.active()) {
             return;
         }
 

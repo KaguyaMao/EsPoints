@@ -23,16 +23,16 @@ HCR AAD 是 Minecraft Forge 1.20.1 的行动攻防、据点和战术地图模组
 | Minecraft | 1.20.1 |
 | Forge | 47.4.20 |
 | MUtil | 6.3.0 |
-| Espetro | 1.1.3-i（精确版本） |
+| Espetro | 1.1.3-l（精确版本） |
 | Ping Wheel | 1.12.1 |
-| EsRadial / ApricityUI | 0.2.0 / 1.2.3.1（精确版本）|
+| EsRadial / ApricityUI | 0.3.2 / 1.2.6（精确版本）|
 | OELib | 0.2.4 或更高 |
 | Tetrachord Lib | 1.20+1.0.3（精确版本，双端硬前置） |
 
 客户端和服务器均需安装 HCR AAD、Espetro、Tetrachord Lib 1.20+1.0.3、MUtil、
 Ping Wheel、EsRadial、ApricityUI 与 OELib（Espetro 自身的前置仍需安装）。
 普通配置、据点和选点窗口使用 MUtil；战术标点轮盘使用 ApricityUI / EsRadial，世界射线与显示复用
-Ping Wheel。协议版本为 `13`，客户端与服务器必须成套更新。
+Ping Wheel。协议版本为 `16`，客户端与服务器必须成套更新。
 
 ## 默认按键
 
@@ -68,7 +68,7 @@ cd /home/shu/IdeaProjects/espetro-HCR
 
 ## 快速部署
 
-1. 将 HCR AAD、Espetro、Tetrachord Lib 1.20+1.0.3、MUtil、Ping Wheel 1.12.1、EsRadial 0.2.0 和 ApricityUI 1.2.3.1 放入客户端及服务器 `mods/`，并安装 Espetro 自身的其他前置。
+1. 将 HCR AAD、Espetro、Tetrachord Lib 1.20+1.0.3、MUtil、Ping Wheel 1.12.1、EsRadial 0.3.2 和 ApricityUI 1.2.6 放入客户端及服务器 `mods/`，并安装 Espetro 自身的其他前置。
 2. 在每个 `EsWorld/<地图>/EsConfig/` 中配置 `TacticalMap.json` 和 `CapturePoints.json`。
 3. 完整重启服务器，由 Espetro 校验并冻结所有地图配置。
 4. 正常开始 Espetro 对局；地图激活时 HCR AAD 自动加载该地图，部署阶段自动启动第一批据点。
