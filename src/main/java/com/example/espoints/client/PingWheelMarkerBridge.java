@@ -149,7 +149,7 @@ public final class PingWheelMarkerBridge {
             case ATTACK_HERE, DEFEND_HERE -> type.getColor();
             case ENEMY_INFANTRY, ENEMY_TANK, ENEMY_IFV,
                  ENEMY_LIGHT_VEHICLE, ENEMY_HELICOPTER -> 0xFFFFFFFF;
-            default -> TacticalMarkerIcons.ENEMY_RED;
+            default -> TacticalMarkerIcons.isEnemyUnit(type) ? 0xFFFFFFFF : type.getColor();
         };
     }
 

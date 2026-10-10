@@ -28,17 +28,17 @@ HCR AAD 现在把“客户端显示设置”和“地图规则”分开：
 | `minecraft_version` | `1.20.1` | 目标游戏版本 |
 | `forge_version` | `47.4.20` | Forge 开发版本 |
 | `mod_id` | `espoints` | 模组 ID |
-| `mod_version` | `1.1.1b` | HCR AAD 构建版本 |
-| `espetro_version` | `1.1.3-i` | Espetro 编译和运行精确版本 |
+| `mod_version` | `1.1.1c` | HCR AAD 构建版本 |
+| `espetro_version` | `1.1.3-j` | Espetro 编译和运行精确版本 |
 | `pingwheel_version` | `1.12.1` | 客户端和服务器强制安装的 Ping Wheel 兼容版本 |
-| `esradial_version` | `0.2.0` | 战术轮盘精确强制依赖 |
+| `esradial_version` | `0.3.0` | 战术轮盘精确强制依赖 |
 | `apricityui_version` | `1.2.3.1` | 轮盘渲染前置 |
 | `oelib_version` | `0.2.4` | OELib 运行时强制依赖 |
 | `tetrachord_version` | `1.20+1.0.3` | 客户端与服务器精确硬前置 |
 | `mod_group_id` | `com.example.espoints` | Maven group |
 
 客户端和服务器都需要 Espetro、HCR AAD、Tetrachord Lib 1.20+1.0.3、MUtil、
-Ping Wheel 1.12.1、EsRadial 0.2.0、ApricityUI 1.2.3.1 与 OELib（以及 Espetro 自身的前置）。
+Ping Wheel 1.12.1、EsRadial 0.3.0、ApricityUI 1.2.3.1 与 OELib（以及 Espetro 自身的前置）。
 这些运行要求均在 `mods.toml` 声明。普通 GUI 使用 MUtil，战术类型轮盘使用 ApricityUI / EsRadial，
 世界射线与 3D 标点显示复用 Ping Wheel。
 

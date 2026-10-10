@@ -35,15 +35,54 @@ public final class TacticalMarkerIcons {
             return EN_SOLDIER;
         }
         return switch (type) {
-            case ENEMY_INFANTRY -> EN_SOLDIER;
-            case ENEMY_TANK -> EN_TANK;
-            case ENEMY_IFV -> EN_IFV;
-            case ENEMY_LIGHT_VEHICLE -> EN_TRUCK;
-            case ENEMY_HELICOPTER -> EN_HELI;
-            case ATTACK_HERE -> MARK_ATTACK;
-            case DEFEND_HERE -> MARK_DEFEND;
+            case ENEMY_INFANTRY -> icon("enemy/map_genericinfantry.png");
+            case ENEMY_TANK -> icon("enemy/map_tank.png");
+            case ENEMY_IFV -> icon("enemy/map_ifv.png");
+            case ENEMY_LIGHT_VEHICLE -> icon("enemy/map_jeep.png");
+            case ENEMY_HELICOPTER -> icon("enemy/map_transporthelo.png");
+            case ATTACK_HERE -> icon("commands/attack.png");
+            case DEFEND_HERE -> icon("commands/defend.png");
             case ARTILLERY_TARGET -> ACP;
+            case ENEMY_MACHINE_GUNNER -> icon("enemy/map_infmg.png");
+            case ENEMY_LIGHT_AT -> icon("enemy/map_lat.png");
+            case ENEMY_HEAVY_AT -> icon("enemy/map_hat.png");
+            case ENEMY_SNIPER -> icon("enemy/map_marksmansniper.png");
+            case ENEMY_APC -> icon("enemy/map_apc.png");
+            case ENEMY_TRACKED_IFV -> icon("enemy/map_trackedifv.png");
+            case ENEMY_TRACKED_APC -> icon("enemy/map_trackedapc.png");
+            case ENEMY_RECON -> icon("enemy/t_map_wheeledrecon.png");
+            case ENEMY_ARMED_JEEP -> icon("enemy/map_jeep_turret.png");
+            case ENEMY_AT_JEEP -> icon("enemy/map_jeep_antitank.png");
+            case ENEMY_MOTORCYCLE -> icon("enemy/map_motorcycle.png");
+            case ENEMY_BOAT -> icon("enemy/map_boat.png");
+            case ENEMY_LOGISTICS -> icon("enemy/map_truck_logistics.png");
+            case ENEMY_TRANSPORT_TRUCK -> icon("enemy/map_truck_transport.png");
+            case ENEMY_ANTI_AIR -> icon("enemy/map_antiair.png");
+            case ENEMY_ARTILLERY_VEHICLE -> icon("enemy/t_map_truck_artillery.png");
+            case ENEMY_ATTACK_HELICOPTER -> icon("enemy/map_attackhelo.png");
+            case ENEMY_SCOUT_HELICOPTER -> icon("enemy/t_map_helicopter_scout.png");
+            case ENEMY_UAV -> icon("enemy/map_uav.png");
+            case ENEMY_JET -> icon("enemy/map_jet_a10.png");
+            case ENEMY_FOB -> icon("enemy/deployable_fob.png");
+            case ENEMY_HAB -> icon("enemy/deployable_hab.png");
+            case ENEMY_RALLY -> icon("enemy/rallypoint.png");
+            case ENEMY_REPAIR -> icon("enemy/deployable_repairstation.png");
+            case ENEMY_MORTAR -> icon("enemy/deployable_mortars.png");
+            case ENEMY_HMG -> icon("enemy/deployable_hmg.png");
+            case ENEMY_AT_WEAPON -> icon("enemy/deployable_anti_tank.png");
+            case ENEMY_AA_WEAPON -> icon("enemy/deployable_antiairgun.png");
+            case ENEMY_MINE -> icon("enemy/map_mine.png");
+            case ENEMY_IED -> icon("enemy/map_ied.png");
+            case MOVE_HERE -> icon("commands/move.png");
+            case OBSERVE_HERE -> icon("commands/observe.png");
+            case REQUEST_AMMO -> icon("commands/resupply_ammo.png");
+            case REQUEST_CONSTRUCTION -> icon("commands/resupply_construction.png");
+            case REQUEST_PICKUP -> icon("commands/pickup.png");
         };
+    }
+
+    private static ResourceLocation icon(String path) {
+        return ResourceLocation.fromNamespaceAndPath(ESPointsMod.MOD_ID, "textures/gui/mark/" + path);
     }
 
     /** 是否为敌方单位类标点（不含进攻/防守指令标）。 */
@@ -51,10 +90,6 @@ public final class TacticalMarkerIcons {
         if (type == null) {
             return false;
         }
-        return switch (type) {
-            case ENEMY_INFANTRY, ENEMY_TANK, ENEMY_IFV,
-                 ENEMY_LIGHT_VEHICLE, ENEMY_HELICOPTER -> true;
-            default -> false;
-        };
+        return type.name().startsWith("ENEMY_");
     }
 }

@@ -339,7 +339,7 @@ public class CapturePointManager {
         }
     }
 
-    private boolean isTacticalMapSubscribed(ServerPlayer player, long currentTick) {
+    public boolean isTacticalMapSubscribed(ServerPlayer player, long currentTick) {
         Long expiresAt = tacticalMapSubscriptions.get(player.getUUID());
         if (expiresAt == null) {
             return false;

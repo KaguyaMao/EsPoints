@@ -1,6 +1,7 @@
 package com.example.espoints.client;
 
 import org.esradial.client.Actions;
+import org.esradial.client.RadialCommandMenu;
 import org.esradial.client.RadialMenuClientApi;
 import org.esradial.client.RadialMenuBuilder;
 import org.esradial.client.RadialMenuRegistry;
@@ -36,7 +37,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 长按标点键打开 ApricityUI / EsRadial 轮盘；松开确认，左键可提前确认，右键取消。
+ * 长按标点键打开共享分类轮盘；左键进入目录/确认，松开取消，右键返回。
  * 标点状态仍只在 ESPoints，输入、射线和显示能力复用 Ping Wheel。
  * 菜单使用独立 owner，关闭或离开战场时不会影响 Espetro 的轮盘。
  */
@@ -55,6 +56,7 @@ public final class TacticalMarkRadialController {
     private static boolean consumedUntilRelease;
     private static int heldTicks;
     private static long lastRequestMarkersMs;
+    private static Vec3 openingTarget;
 
     private TacticalMarkRadialController() {
     }
@@ -66,6 +68,12 @@ public final class TacticalMarkRadialController {
         initialized = true;
         registerActionsOnce();
         publishMenu();
+        RadialCommandMenu.setOrder("espoints.directory.enemy", 0);
+        RadialCommandMenu.setOrder("espoints.directory.orders", 200);
+        RadialCommandMenu.register(OWNER, () -> RadialMenuRegistry.getRuntimeMenu(MENU_ID),
+            () -> isActiveBattlefield(Minecraft.getInstance()) && canLocalPlace(), () -> {
+                requestMarkersIfStale(); captureOpeningTarget();
+            });
         ModLogger.info("战术标点 EsRadial 轮盘已注册 (menu=" + MENU_ID + ")");
     }
 
@@ -91,29 +99,49 @@ public final class TacticalMarkRadialController {
     }
 
     private static void publishMenu() {
-        RadialMenuRegistry.setMenus(OWNER, List.of(buildMenuData()));
+        RadialMenuRegistry.setMenus(OWNER, buildMenuTree(TacticalMarkRadialController::placeAtLook,
+            id -> {
+                var next = RadialMenuRegistry.getRuntimeMenu(id);
+                if (next != null) RadialMenuClientApi.navigate(next);
+            }));
+    }
+
+    public static List<RadialMenuData> buildMenuTree(java.util.function.Consumer<TacticalMarkerType> place,
+                                                   java.util.function.Consumer<ResourceLocation> navigate) {
+        var menus = new java.util.ArrayList<RadialMenuData>();
+        menus.add(buildPage("", "战术标点", place, navigate));
+        for (var directory : TacticalMarkCatalog.directories())
+            menus.add(buildPage(directory.id(), directory.title(), place, navigate));
+        return List.copyOf(menus);
+    }
+    public static ResourceLocation pageId(String directory) {
+        return directory.isEmpty() ? MENU_ID : ResourceLocation.fromNamespaceAndPath("espoints", "mark_" + directory);
+    }
+    private static RadialMenuData buildPage(String id, String title,
+            java.util.function.Consumer<TacticalMarkerType> place,
+            java.util.function.Consumer<ResourceLocation> navigate) {
+        var builder = new RadialMenuBuilder(pageId(id)).title(Component.literal(title))
+            .radii(44, 96).squadLayout().animationSpeed(1.25f)
+            .ringColors(List.of("#B824292B", "#C832383A"));
+        for (var child : TacticalMarkCatalog.children(id)) {
+            builder.slot("espoints.directory." + child.id(),
+                ResourceLocation.fromNamespaceAndPath("esradial", "textures/squad/" + child.icon() + ".png"),
+                () -> navigate.accept(pageId(child.id())), Component.literal(child.title()), "#FFD5B25C", false)
+                .submenuLast();
+        }
+        TacticalMarkCatalog.directories().stream().filter(d -> d.id().equals(id)).findFirst().ifPresent(d -> {
+            for (TacticalMarkerType type : d.marks()) builder.slot("espoints.mark." + type.name(),
+                TacticalMarkerIcons.textureFor(type), () -> place.accept(type),
+                Component.literal(type.getDisplayName()), type.name().startsWith("ENEMY_") ? "#FFE05252" : "#FFD5B25C");
+        });
+        return builder.build();
     }
 
     static RadialMenuData buildMenuData() {
-        List<MenuEntry> entries = menuEntries();
-        RadialLayout layout = menuLayout();
-        RadialMenuBuilder builder = new RadialMenuBuilder(MENU_ID)
-            .title(Component.literal("战术标点"))
-            .radii(layout.innerRadius(), layout.outerRadius())
-            .animationSpeed(1.25f)
-            .ringColors(List.of("#B824292B", "#C832383A"));
-        for (int i = 0; i < entries.size(); i++) {
-            MenuEntry entry = entries.get(i);
-            var sector = layout.sectorForSlot(i, entries.size());
-            builder.slot(entry.id(), entry.icon(),
-                Actions.script(PLACE_ACTION, Map.of("type", entry.type().name())),
-                Component.literal(entry.type().getDisplayName()), entry.color(), entry.closeAfterAction())
-                .sectorLast(sector.startDegrees(), sector.sweepDegrees());
-        }
-        for (var sector : layout.sectors()) {
-            if (sector.slotIndex() == -1) builder.gap(sector.startDegrees(), sector.sweepDegrees());
-        }
-        return builder.build();
+        return buildMenuTree(TacticalMarkRadialController::placeAtLook, id -> {
+            var next = RadialMenuRegistry.getRuntimeMenu(id);
+            if (next != null) RadialMenuClientApi.navigate(next);
+        }).get(0);
     }
 
     /** 不初始化 Minecraft 注册表的菜单描述，布局与运行时菜单共用。 */
@@ -239,9 +267,9 @@ public final class TacticalMarkRadialController {
             return false;
         }
         try {
-            return RadialMenuClientApi.open(RadialMenuRegistry.getRuntimeMenu(MENU_ID),
+            return RadialMenuClientApi.open(RadialCommandMenu.compose(RadialMenuRegistry.getRuntimeMenu(MENU_ID)),
                 new RadialMenuClientApi.OpenOptions(OWNER,
-                    () -> InputUtils.KEY_BINDING_PING.isDown(), true,
+                    () -> InputUtils.KEY_BINDING_PING.isDown(), false,
                     reason -> consumedUntilRelease = true));
         } catch (RuntimeException error) {
             ModLogger.warn("打开标点轮盘失败: " + error);
@@ -263,6 +291,19 @@ public final class TacticalMarkRadialController {
         if (type == null || !isActiveBattlefield(mc) || !canLocalPlace()) {
             return;
         }
+        if (openingTarget == null) {
+            mc.player.displayClientMessage(Component.literal("§7打开轮盘时没有指向可标记位置。"), true);
+            return;
+        }
+        Vec3 pos = openingTarget;
+        NetworkHandler.INSTANCE.sendToServer(new PlaceTacticalMarkerMessage(type, pos.x, pos.y, pos.z));
+        consumedUntilRelease = true;
+
+    }
+    private static void captureOpeningTarget() {
+        openingTarget = null;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.level == null) return;
         Entity cam = mc.getCameraEntity() != null ? mc.getCameraEntity() : mc.player;
         float pt = mc.getFrameTime();
         Vec3 look = cam.getViewVector(pt);
@@ -272,12 +313,9 @@ public final class TacticalMarkRadialController {
         HitResult hit = Raycast.traceDirectional(
             look, pt, maxReach, cam.isCrouching());
         if (hit == null || hit.getType() == HitResult.Type.MISS) {
-            mc.player.displayClientMessage(
-                Component.literal("§7准星没有指向可标记位置。"), true);
             return;
         }
-        Vec3 pos = hit.getLocation().add(0, 0.25, 0);
-        NetworkHandler.INSTANCE.sendToServer(
-            new PlaceTacticalMarkerMessage(type, pos.x, pos.y, pos.z));
+        openingTarget = hit.getLocation().add(0, 0.25, 0);
     }
+
 }

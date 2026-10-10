@@ -165,7 +165,7 @@ public final class TacticalMarkerWorldRenderer {
             case DEFEND_HERE -> TacticalMarkerType.DEFEND_HERE.getColor();
             case ENEMY_INFANTRY, ENEMY_TANK, ENEMY_IFV,
                  ENEMY_LIGHT_VEHICLE, ENEMY_HELICOPTER -> 0xFFFFFFFF;
-            default -> TacticalMarkerIcons.ENEMY_RED;
+            default -> TacticalMarkerIcons.isEnemyUnit(type) ? 0xFFFFFFFF : type.getColor();
         };
         int a = Mth.clamp(Math.round(255 * opacity), 0, 255);
         return (base & 0x00FFFFFF) | (a << 24);
