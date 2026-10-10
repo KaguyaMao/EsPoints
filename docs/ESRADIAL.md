@@ -8,7 +8,7 @@
 然后准备 README 所列的 Espetro、Tetrachord 和其他依赖，在 EsPoints 执行
 `./gradlew test build`。不再需要 `-PauratipJar`；Espetro 自身的 AuraTip 前置仍需安装。
 
-客户端和服务器安装外置 EsRadial 0.3.0、ApricityUI 1.2.3.1。
+客户端和服务器安装外置 EsRadial 0.3.0、ApricityUI 1.2.6。
 EsRadial 0.3.0 包含游戏内拖动编辑和客户端 JSON 布局配置。
 
 按住标点键约 4 tick 打开；左键选择，松开唤出键取消；右键返回 / Esc 关闭。
