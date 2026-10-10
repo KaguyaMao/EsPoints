@@ -69,12 +69,6 @@ public final class TacticalMapGridRenderer {
         // 需求：取消上方/左侧大格坐标的背景色（不再画刻度条底色）
         rulerLabels(g, grid, v, true, ruler);
         rulerLabels(g, grid, v, false, ruler);
-        if (false) {
-            String legend = "大格150 · 中格50 · 小格16⅔";
-            int w = (int) Math.ceil(RadialUiText.width(legend,9,500));
-            g.fill(v.left + 18, v.bottom() - 13, v.left + 22 + w, v.bottom(), 0xC91C3038);
-            RadialUiText.draw(g,legend,v.left+20,v.bottom()-11,0xFFC8DDDF,9,500);
-        }
         if (tooltip == null) return;
         int x=tooltip.x(), y=tooltip.y(), width=tooltip.width(), height=tooltip.height();
         String label=tooltip.label(), detail=tooltip.detail();
@@ -113,11 +107,13 @@ public final class TacticalMapGridRenderer {
         double origin = horizontal ? grid.minX() : grid.minZ(), max = horizontal ? grid.maxX() : grid.maxZ();
         double minView = horizontal ? v.minX : v.minZ, scale = horizontal ? v.scaleX : v.scaleZ;
         int start = horizontal ? v.left : v.top, end = horizontal ? v.right() : v.bottom();
-        long first = Math.max(0, (long) Math.floor((minView - origin) / 150));
-        long last = (long) Math.ceil((Math.min(max, minView + (end - start) / scale) - origin) / 150) - 1;
-        long stride = Math.max(1, (long) Math.ceil(24 / (150 * scale)));
+        // 坐标系间隔必须跟随大格边长（曾硬编码 150，改 300 后刻度就错位了）
+        final double step = com.example.espoints.tactical.TacticalMapGrid.LARGE;
+        long first = Math.max(0, (long) Math.floor((minView - origin) / step));
+        long last = (long) Math.ceil((Math.min(max, minView + (end - start) / scale) - origin) / step) - 1;
+        long stride = Math.max(1, (long) Math.ceil(24 / (step * scale)));
         for (long i = first; i <= last; i += stride) {
-            double a = Math.max(origin + i * 150, minView), b = Math.min(Math.min(origin + (i + 1) * 150, max), minView + (end - start) / scale);
+            double a = Math.max(origin + i * step, minView), b = Math.min(Math.min(origin + (i + 1) * step, max), minView + (end - start) / scale);
             if (b <= a) continue;
             int center = (int) Math.round(start + ((a + b) / 2 - minView) * scale);
             String label = horizontal ? TacticalMapGrid.columnLabel(i) : Long.toString(i + 1);

@@ -2048,6 +2048,10 @@ public class CapturePointManager {
             boolean commander = EspetroTeamBridge.isCommander(player);
             int shortId = tacticalPlayerId(playerUUID);
             MapPositionSample sample = samplePlayerMapPosition(player);
+            // 玩家在载具上时不参与玩家图标同步（由载具图标代表）
+            if (player.getVehicle() != null) {
+                continue;
+            }
             SyncPlayerPositionsMessage.PlayerPosition pos =
                 SyncPlayerPositionsMessage.PlayerPosition.positionOnly(
                     sample.x, sample.y, sample.z, sample.yaw);

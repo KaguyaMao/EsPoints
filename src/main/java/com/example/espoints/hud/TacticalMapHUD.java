@@ -154,6 +154,10 @@ public class TacticalMapHUD implements IGuiOverlay {
     };
     
     private boolean isMapVisible = false; // 地图是否可见
+    /** 小地图开关动画：0.2 秒，从屏幕左缘滑入 / 向左滑出。 */
+    private static final long MAP_SLIDE_MS = 200L;
+    private long mapSlideStartMs;
+    private boolean mapSlideTargetVisible;
     private double visibleWorldSpan = -1.0D;
     /** 缩放目标跨度：visibleWorldSpan 每帧向它插值，做出丝滑的放大/缩小过渡。 */
     private double targetWorldSpan = -1.0D;
@@ -182,11 +186,12 @@ public class TacticalMapHUD implements IGuiOverlay {
             try {
                 graphics.pose().translate(x, y, 0);
                 graphics.pose().mulPose(Axis.ZP.rotationDegrees(vehicle.yaw() + 180));
-                blitMapIcon(graphics, 0, 0, 12,
+                // 载具图标缩到原来的 1/4（12 → 3）
+                blitMapIcon(graphics, 0, 0, 3,
                     com.example.espoints.tactical.FriendlyVehicleIcons.texture(vehicle.type()),
                     vehicle.loaded() ? COLOR_FRIENDLY_WHITE : 0x99FFFFFF);
             } finally { graphics.pose().popPose(); }
-            if (markerHoverEnabled && Math.hypot(markerHoverMouseX - x, markerHoverMouseY - y) < 9) {
+            if (markerHoverEnabled && Math.hypot(markerHoverMouseX - x, markerHoverMouseY - y) < 5) {
                 String details = vehicle.name() + " · " + (vehicle.loaded()
                     ? vehicle.passengers() == 0 ? "无人乘坐" : "乘员 " + vehicle.passengers() : "最后已知位置");
                 if (vehicle.squadId() >= 0) details += " · 小队 " + vehicle.squadId();
@@ -301,6 +306,8 @@ public class TacticalMapHUD implements IGuiOverlay {
      */
     public void toggleMapVisibility() {
         isMapVisible = !isMapVisible;
+        mapSlideStartMs = System.currentTimeMillis();
+        mapSlideTargetVisible = isMapVisible;
         draggingMap = false;
 
         Minecraft mc = Minecraft.getInstance();
@@ -400,6 +407,8 @@ public class TacticalMapHUD implements IGuiOverlay {
         friendlyVehicleFrame = null;
         lastFriendlyVehicleFrame = 0L;
         isMapVisible = false;
+        mapSlideStartMs = 0L;
+        mapSlideTargetVisible = false;
         visibleWorldSpan = -1.0D;
         targetWorldSpan = -1.0D;
         draggingMap = false;
@@ -475,9 +484,25 @@ public class TacticalMapHUD implements IGuiOverlay {
      * @param screenWidth 屏幕宽度
      * @param screenHeight 屏幕高度
      */
+    /** 小地图滑动偏移：0=就位，-(mapLeft+width+12)= 完全滑出到屏幕左缘之外。 */
+    private double mapSlideOffset(int mapLeft, int mapWidth) {
+        double full = mapLeft + mapWidth + 12.0D;
+        if (mapSlideStartMs <= 0L) return isMapVisible ? 0.0D : -full;
+        double t = Math.min(1.0D, (System.currentTimeMillis() - mapSlideStartMs) / (double) MAP_SLIDE_MS);
+        double u = 1.0D - t;
+        double e = 1.0D - u * u * u;   // easeOutCubic
+        return mapSlideTargetVisible ? -full * (1.0D - e) : -full * e;
+    }
+
+    /** 隐藏且动画已结束 —— 不再绘制。 */
+    private boolean mapFullyHidden() {
+        return !isMapVisible
+            && (mapSlideStartMs <= 0L || System.currentTimeMillis() - mapSlideStartMs >= MAP_SLIDE_MS);
+    }
+
     @Override
     public void render(ForgeGui gui, GuiGraphics guiGraphics, float partialTick, int screenWidth, int screenHeight) {
-        if (!isMapVisible) {
+        if (mapFullyHidden()) {
             return;
         }
         stepZoomAnimation();
@@ -489,7 +514,8 @@ public class TacticalMapHUD implements IGuiOverlay {
         int mapLeft = screenWidth - mapWidth - margin;
         int mapTop = margin;
         // 无标题/底部操作提示；缩放改由滚轮控制（见 onHudMouseScrolled）
-        renderMapArea(guiGraphics, mapLeft, mapTop, mapWidth, mapHeight,
+        int slideX = (int) Math.round(mapSlideOffset(mapLeft, mapWidth));
+        renderMapArea(guiGraphics, mapLeft + slideX, mapTop, mapWidth, mapHeight,
             "", false, false, partialTick);
     }
 
@@ -1085,7 +1111,9 @@ public class TacticalMapHUD implements IGuiOverlay {
         // 渲染其他玩家位置
         renderOtherPlayersOnMap(guiGraphics, player, content, partialTick);
 
-        if (EspetroTeamBridge.isPlayerVisibleOnTacticalMap(player)
+        // 玩家在载具上时由载具图标代表，不再单独画玩家图标
+        if (player.getVehicle() == null
+                && EspetroTeamBridge.isPlayerVisibleOnTacticalMap(player)
                 && content.containsWorld(playerRenderX, playerRenderZ)) {
             renderMapPlayerIcon(guiGraphics, content.screenXd(playerRenderX), content.screenYd(playerRenderZ),
                 playerRenderYaw, LOCAL_PLAYER_MARKER_SIZE,
