@@ -57,11 +57,12 @@ public final class TacticalMapGridRenderer {
     public static void drawChrome(GuiGraphics g, TacticalMapGrid grid, View v, TacticalMapGrid.Address hover,
                                   double mouseX, double mouseY, String markerCoordinates, boolean interactive) {
         RadialUiText.beginFrame();
+        var tooltip=tooltip(v,hover,mouseX,mouseY,markerCoordinates,interactive);
         // Detail numbers are local to the hovered parent: no wall of tiny labels.
         if (hover != null) {
             boolean smallNumbers = TacticalMapGrid.SMALL * v.scaleX >= 25 && TacticalMapGrid.SMALL * v.scaleZ >= 20;
-            numbers(g, grid, v, grid.largeX(hover), grid.largeZ(hover), 50, 0xFFB6D9DA, smallNumbers ? hover.medium() : -1);
-            numbers(g, grid, v, grid.mediumX(hover), grid.mediumZ(hover), TacticalMapGrid.SMALL, 0xFFE4FFF8, -1);
+            numbers(g, grid, v, grid.largeX(hover), grid.largeZ(hover), 50, 0xFFB6D9DA, smallNumbers ? hover.medium() : -1,tooltip);
+            numbers(g, grid, v, grid.mediumX(hover), grid.mediumZ(hover), TacticalMapGrid.SMALL, 0xFFE4FFF8, -1,tooltip);
         }
         final int ruler = 15;
         g.fill(v.left, v.top, v.right(), v.top + ruler, 0xE51C3038);
@@ -74,7 +75,17 @@ public final class TacticalMapGridRenderer {
             g.fill(v.left + 18, v.bottom() - 13, v.left + 22 + w, v.bottom(), 0xC91C3038);
             RadialUiText.draw(g,legend,v.left+20,v.bottom()-11,0xFFC8DDDF,9,500);
         }
-        if (hover == null || !interactive || mouseX < v.left + ruler || mouseY < v.top + ruler) return;
+        if (tooltip == null) return;
+        int x=tooltip.x(), y=tooltip.y(), width=tooltip.width(), height=tooltip.height();
+        String label=tooltip.label(), detail=tooltip.detail();
+        g.fill(x, y, x + width, y + height, 0xF01C3038);
+        g.renderOutline(x, y, width, height, 0xFF8FC7C4);
+        RadialUiText.draw(g,RadialUiText.fit(label,width-10,9,600),x+5,y+3,0xFFE4FFF8,9,600);
+        RadialUiText.draw(g,RadialUiText.fit(detail,width-10,9,500),x+5,y+15,0xFFAFC3C7,9,500);
+    }
+    private record Tooltip(int x,int y,int width,int height,String label,String detail) { }
+    private static Tooltip tooltip(View v,TacticalMapGrid.Address hover,double mouseX,double mouseY,String markerCoordinates,boolean interactive) {
+        if (hover == null || !interactive || mouseX < v.left + 15 || mouseY < v.top + 15) return null;
         String label = hover.label();
         String detail = markerCoordinates == null ? "X: " + (long) Math.floor(v.worldX(mouseX)) + "  Z: " + (long) Math.floor(v.worldZ(mouseY)) : markerCoordinates;
         int width = Math.min(v.width,(int)Math.ceil(Math.max(RadialUiText.width(label,9,600),RadialUiText.width(detail,9,500)))+10), height = 28;
@@ -82,12 +93,9 @@ public final class TacticalMapGridRenderer {
         if (x + width > v.right()) x = (int) mouseX - width - 10;
         if (y + height > v.bottom()) y = (int) mouseY - height - 10;
         x = Math.max(v.left, Math.min(v.right() - width, x)); y = Math.max(v.top, Math.min(v.bottom() - height, y));
-        g.fill(x, y, x + width, y + height, 0xF01C3038);
-        g.renderOutline(x, y, width, height, 0xFF8FC7C4);
-        RadialUiText.draw(g,RadialUiText.fit(label,width-10,9,600),x+5,y+3,0xFFE4FFF8,9,600);
-        RadialUiText.draw(g,RadialUiText.fit(detail,width-10,9,500),x+5,y+15,0xFFAFC3C7,9,500);
+        return new Tooltip(x,y,width,height,label,detail);
     }
-    private static void numbers(GuiGraphics g, TacticalMapGrid grid, View v, double x, double z, double step, int color, int skip) {
+    private static void numbers(GuiGraphics g, TacticalMapGrid grid, View v, double x, double z, double step, int color, int skip, Tooltip tooltip) {
         if (step * v.scaleX < 25 || step * v.scaleZ < 20) return;
         for (int row = 0; row < 3; row++) for (int column = 0; column < 3; column++) {
             if (row * 3 + column + 1 == skip || x + (column + .5) * step >= grid.maxX() || z + (row + .5) * step >= grid.maxZ()) continue;
@@ -96,6 +104,8 @@ public final class TacticalMapGridRenderer {
             double textWidth = RadialUiText.width(text,9,600);
             if (sx-textWidth/2 < v.left+15 || sx+textWidth/2 > v.right()-1
                 || sy-5 < v.top+15 || sy+6 > v.bottom()-1) continue;
+            if (tooltip != null && sx+textWidth/2 > tooltip.x() && sx-textWidth/2 < tooltip.x()+tooltip.width()
+                && sy+6 > tooltip.y() && sy-5 < tooltip.y()+tooltip.height()) continue;
             RadialUiText.draw(g,text,sx-textWidth/2,sy-5,color,9,600);
         }
     }
