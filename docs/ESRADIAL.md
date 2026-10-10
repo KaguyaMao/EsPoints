@@ -1,6 +1,6 @@
 # 战术轮盘构建
 
-战术标点使用 EsRadial 0.3.1 的 ApricityUI 渲染器，与 Espetro 共用轮盘。
+战术标点使用 EsRadial 0.3.2 的 ApricityUI 渲染器，与 Espetro 共用轮盘。
 保留 Ping Wheel 的标点按键、射线和地图/世界标点；新增标点与己方载具同步使用协议16，客户端和服务端必须同时更新。
 
 先将 [EsRadial](https://github.com/RositaOVO/EsRadial/tree/1.20.1) 的 `1.20.1`
@@ -8,14 +8,14 @@
 然后准备 README 所列的 Espetro、Tetrachord 和其他依赖，在 EsPoints 执行
 `./gradlew test build`。不再需要 `-PauratipJar`；Espetro 自身的 AuraTip 前置仍需安装。
 
-客户端和服务器安装外置 EsRadial 0.3.1、ApricityUI 1.2.6。
-EsRadial 0.3.1 包含游戏内拖动编辑和客户端 JSON 布局配置。
+客户端和服务器安装外置 EsRadial 0.3.2、ApricityUI 1.2.6。
+EsRadial 0.3.2 包含游戏内拖动编辑和客户端 JSON 布局配置。
 
-按住标点键约 4 tick 打开；左键选择，松开唤出键取消；点击内圈返回按钮 / Esc 关闭。
-中心和两个空槽不执行动作，取消后继续按住不会重新打开。
+按住标点键约 4 tick 打开；左键选择，松开唤出键取消；点击左上返回扇区退一层，Esc关闭。
+中心和末尾空白不执行动作，取消后继续按住不会重新打开。
 退出战场或断线会关闭本模组的轮盘；已有 Espetro 轮盘时不会抢占。
 
-实际页面由 `buildMenuTree()` 分层构建（敌情、载具、装甲等），每一页使用稳定目录 ID。开发者可以把每页的 `RadialLayout.squad(...)`
+实际页面由 `buildMenuTree()` 分层构建（敌情、载具、装甲等），每一页使用稳定目录 ID。开发者可以把每页的 默认时钟布局
 换成显式布局：构造 `RadialLayout(内半径, 外半径, List<Sector>)`，
 每个 `Sector(起始角, 扇区角度, 动作序号)` 指定位置和大小，序号 `-1` 留空。角度从正上方起顺时针计算；未覆盖区域自动留空。
 玩家打开轮盘后按 F6 进入拖动编辑，Enter 保存、Esc 取消、R 恢复默认（保存后生效）。

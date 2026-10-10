@@ -44,8 +44,8 @@ public enum TacticalMarkerType {
     ENEMY_IED("敌方 IED", 0xFFE05252),
     MOVE_HERE("移动到此", 0xFFFFB52E, true, true),
     OBSERVE_HERE("观察此处", 0xFFFFB52E, true, true),
-    REQUEST_AMMO("请求弹药", 0xFFFFB52E, true, true),
-    REQUEST_CONSTRUCTION("请求建材", 0xFFFFB52E, true, true),
+    REQUEST_AMMO("请求弹药", 0xFFFFB52E, false, true),
+    REQUEST_CONSTRUCTION("请求建材", 0xFFFFB52E, false, true),
     REQUEST_PICKUP("请求接送", 0xFFFFB52E, true, true);
 
     private final String displayName;

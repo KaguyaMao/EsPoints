@@ -43,10 +43,9 @@ public final class TacticalMapMarkerWheel {
                 NetworkHandler.INSTANCE.sendToServer(new PlaceTacticalMarkerMessage(type, worldX, worldZ));
         }, id -> {
             history.push(menu); menu = RadialLayouts.apply(pages.get(id)); session.push(menu.page());
-        }).stream().collect(Collectors.toMap(RadialMenuData::id, Function.identity()));
+        }, this::back).stream().collect(Collectors.toMap(RadialMenuData::id, Function.identity()));
         menu = RadialLayouts.apply(pages.get(TacticalMarkRadialController.pageId("")));
         renderer = new AuiRadialRenderer();
-        renderer.setInputHint("左键选择 · 内圈返回 · Esc取消");
         try {
             if (!renderer.open(menu)) { close(); return false; }
             session = new RadialSession<>(menu.page(), reason -> close());

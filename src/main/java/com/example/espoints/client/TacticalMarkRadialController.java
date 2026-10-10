@@ -37,7 +37,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 长按标点键打开共享分类轮盘；左键进入目录/确认，松开取消，上方按钮返回。
+ * 长按标点键打开共享分类轮盘；左键进入目录/确认，松开取消，左上扇区返回。
  * 标点状态仍只在 ESPoints，输入、射线和显示能力复用 Ping Wheel。
  * 菜单使用独立 owner，关闭或离开战场时不会影响 Espetro 的轮盘。
  */
@@ -108,10 +108,14 @@ public final class TacticalMarkRadialController {
 
     public static List<RadialMenuData> buildMenuTree(java.util.function.Consumer<TacticalMarkerType> place,
                                                    java.util.function.Consumer<ResourceLocation> navigate) {
+        return buildMenuTree(place, navigate, () -> RadialMenuClientApi.back());
+    }
+    public static List<RadialMenuData> buildMenuTree(java.util.function.Consumer<TacticalMarkerType> place,
+            java.util.function.Consumer<ResourceLocation> navigate, Runnable back) {
         var menus = new java.util.ArrayList<RadialMenuData>();
-        menus.add(buildPage("", "战术标点", place, navigate));
+        menus.add(buildPage("", "指挥菜单", place, navigate, back));
         for (var directory : TacticalMarkCatalog.directories())
-            menus.add(buildPage(directory.id(), directory.title(), place, navigate));
+            menus.add(buildPage(directory.id(), directory.title(), place, navigate, back));
         return List.copyOf(menus);
     }
     public static ResourceLocation pageId(String directory) {
@@ -119,10 +123,23 @@ public final class TacticalMarkRadialController {
     }
     private static RadialMenuData buildPage(String id, String title,
             java.util.function.Consumer<TacticalMarkerType> place,
-            java.util.function.Consumer<ResourceLocation> navigate) {
+            java.util.function.Consumer<ResourceLocation> navigate, Runnable back) {
         var builder = new RadialMenuBuilder(pageId(id)).title(Component.literal(title))
             .radii(44, 96).squadLayout().animationSpeed(1.25f)
             .ringColors(List.of("#B824292B", "#C832383A"));
+        if (id.isEmpty()) {
+            builder.slot("espoints.directory.enemy", ResourceLocation.fromNamespaceAndPath("esradial", "textures/squad/radialenemyicon.png"),
+                () -> navigate.accept(pageId("enemy")), Component.literal("敌军标记"), "#FFD5B25C", false)
+                .submenuLast().tintLast(0xFFD5B25C).sectorLast(60,30);
+            var orders = List.of(TacticalMarkerType.ATTACK_HERE, TacticalMarkerType.DEFEND_HERE,
+                TacticalMarkerType.MOVE_HERE, TacticalMarkerType.OBSERVE_HERE, TacticalMarkerType.REQUEST_PICKUP);
+            for (int i=0; i<orders.size(); i++) {
+                var type=orders.get(i);
+                builder.slot("espoints.mark."+type.name(),TacticalMarkerIcons.textureFor(type),
+                    () -> place.accept(type),Component.literal(type.getDisplayName()),"#FFD5B25C").sectorLast(90+i*36,36);
+            }
+            return builder.build();
+        }
         for (var child : TacticalMarkCatalog.children(id)) {
             builder.slot("espoints.directory." + child.id(),
                 ResourceLocation.fromNamespaceAndPath("esradial", "textures/squad/" + child.icon() + ".png"),
@@ -134,6 +151,7 @@ public final class TacticalMarkRadialController {
                 TacticalMarkerIcons.textureFor(type), () -> place.accept(type),
                 Component.literal(type.getDisplayName()), type.name().startsWith("ENEMY_") ? "#FFE05252" : "#FFD5B25C");
         });
+        builder.backSlot(back);
         return builder.build();
     }
 

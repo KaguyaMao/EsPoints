@@ -28,8 +28,11 @@ class TacticalMarkTreeTest {
         assertEquals(3,TacticalMarkCatalog.children("vehicles").size());
         assertTrue(TacticalMarkCatalog.directories().stream().filter(d->d.id().equals("armour"))
             .findFirst().orElseThrow().marks().contains(TacticalMarkerType.ENEMY_TANK));
-        assertTrue(TacticalMarkCatalog.directories().stream().filter(d->d.id().equals("requests"))
-            .findFirst().orElseThrow().marks().contains(TacticalMarkerType.REQUEST_AMMO));
+        var requests=TacticalMarkCatalog.directories().stream().filter(d->d.id().equals("requests"))
+            .findFirst().orElseThrow().marks();
+        assertEquals(java.util.List.of(TacticalMarkerType.REQUEST_PICKUP), requests);
+        assertFalse(TacticalMarkerType.REQUEST_AMMO.isSelectableFromMenu());
+        assertFalse(TacticalMarkerType.REQUEST_CONSTRUCTION.isSelectableFromMenu());
     }
     @Test void originalNetworkOrdinalsRemainStable() {
         assertEquals(0,TacticalMarkerType.ENEMY_INFANTRY.ordinal());assertEquals(5,TacticalMarkerType.ATTACK_HERE.ordinal());
