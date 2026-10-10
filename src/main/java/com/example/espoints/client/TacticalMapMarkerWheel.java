@@ -46,7 +46,7 @@ public final class TacticalMapMarkerWheel {
         }).stream().collect(Collectors.toMap(RadialMenuData::id, Function.identity()));
         menu = RadialLayouts.apply(pages.get(TacticalMarkRadialController.pageId("")));
         renderer = new AuiRadialRenderer();
-        renderer.setInputHint("左键选择 · 右键返回 · Esc取消");
+        renderer.setInputHint("左键选择 · 上方返回 · Esc取消");
         try {
             if (!renderer.open(menu)) { close(); return false; }
             session = new RadialSession<>(menu.page(), reason -> close());
@@ -66,7 +66,7 @@ public final class TacticalMapMarkerWheel {
         if (!active()) return;
         if (!valid()) { close(); return; }
         try {
-            session.hover(renderer.mouseX(), renderer.mouseY());
+            updateHover();
             var path = new java.util.ArrayList<String>();
             history.descendingIterator().forEachRemaining(p -> path.add(p.title().getString()));
             path.add(menu.title().getString());
@@ -79,10 +79,9 @@ public final class TacticalMapMarkerWheel {
     public boolean mouse(int button, boolean pressed) {
         if (!active()) return false;
         if (!valid()) { close(); return true; }
-        session.hover(renderer.mouseX(), renderer.mouseY());
-        if (pressed && button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) { back(); return true; }
+        updateHover();
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
-            if (pressed && Math.hypot(renderer.mouseX(), renderer.mouseY()) < menu.layout().innerRadius() && !history.isEmpty()) {
+            if (pressed && renderer.isBackButtonHovered(menu, !history.isEmpty())) {
                 back(); if (session != null) session.seedPrimary(true);
             } else session.updatePrimary(pressed);
         }
@@ -94,8 +93,12 @@ public final class TacticalMapMarkerWheel {
         return false;
     }
     private void back() {
-        if (history.isEmpty()) { close(); return; }
+        if (history.isEmpty()) return;
         session.back(); menu = history.pop(); session.replace(menu.page());
+    }
+    private void updateHover() {
+        if (renderer.isBackButtonHovered(menu, !history.isEmpty())) session.hover(0, 0);
+        else session.hover(renderer.mouseX(), renderer.mouseY());
     }
     public void close() {
         if (renderer != null) renderer.close();

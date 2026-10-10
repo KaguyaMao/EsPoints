@@ -37,7 +37,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 长按标点键打开共享分类轮盘；左键进入目录/确认，松开取消，右键返回。
+ * 长按标点键打开共享分类轮盘；左键进入目录/确认，松开取消，上方按钮返回。
  * 标点状态仍只在 ESPoints，输入、射线和显示能力复用 Ping Wheel。
  * 菜单使用独立 owner，关闭或离开战场时不会影响 Espetro 的轮盘。
  */

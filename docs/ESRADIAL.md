@@ -1,6 +1,6 @@
 # 战术轮盘构建
 
-战术标点使用 EsRadial 0.3.0 的 ApricityUI 渲染器，与 Espetro 共用轮盘。
+战术标点使用 EsRadial 0.3.1 的 ApricityUI 渲染器，与 Espetro 共用轮盘。
 保留 Ping Wheel 的标点按键、射线和地图/世界标点；新增标点与己方载具同步使用协议16，客户端和服务端必须同时更新。
 
 先将 [EsRadial](https://github.com/RositaOVO/EsRadial/tree/1.20.1) 的 `1.20.1`
@@ -8,10 +8,10 @@
 然后准备 README 所列的 Espetro、Tetrachord 和其他依赖，在 EsPoints 执行
 `./gradlew test build`。不再需要 `-PauratipJar`；Espetro 自身的 AuraTip 前置仍需安装。
 
-客户端和服务器安装外置 EsRadial 0.3.0、ApricityUI 1.2.6。
-EsRadial 0.3.0 包含游戏内拖动编辑和客户端 JSON 布局配置。
+客户端和服务器安装外置 EsRadial 0.3.1、ApricityUI 1.2.6。
+EsRadial 0.3.1 包含游戏内拖动编辑和客户端 JSON 布局配置。
 
-按住标点键约 4 tick 打开；左键选择，松开唤出键取消；右键返回 / Esc 关闭。
+按住标点键约 4 tick 打开；左键选择，松开唤出键取消；点击上方返回按钮 / Esc 关闭。
 中心和两个空槽不执行动作，取消后继续按住不会重新打开。
 退出战场或断线会关闭本模组的轮盘；已有 Espetro 轮盘时不会抢占。
 
@@ -25,3 +25,5 @@ EsRadial 0.3.0 包含游戏内拖动编辑和客户端 JSON 布局配置。
 详细格式见 [EsRadial 布局配置](https://github.com/RositaOVO/EsRadial/blob/1.20.1/docs/LAYOUTS.md)。
 
 分类与新素材说明见 [Squad 分类轮盘](SQUAD-TREE.md)。
+
+地图固定坐标网格规则参见 [MAP-GRID.md](MAP-GRID.md)。

@@ -1038,9 +1038,12 @@ public class TacticalMapHUD implements IGuiOverlay {
 
         guiGraphics.enableScissor(content.left, content.top, content.right(), content.bottom());
         renderMapBackground(guiGraphics, content);
-        if (config.showGrid) {
-            renderViewportGrid(guiGraphics, content);
-        }
+        var grid = new com.example.espoints.tactical.TacticalMapGrid(bounds.minX, bounds.minZ, bounds.maxX, bounds.maxZ);
+        var gridView = new TacticalMapGridRenderer.View(content.left, content.top, content.width, content.height,
+            content.viewMinX, content.viewMinZ, content.scaleX, content.scaleZ);
+        var gridHover = markerHoverEnabled
+            ? grid.address(gridView.worldX(markerHoverMouseX), gridView.worldZ(markerHoverMouseY)).orElse(null) : null;
+        if (config.showGrid) TacticalMapGridRenderer.drawGrid(guiGraphics, grid, gridView, gridHover);
 
         String localTeam = EspetroTeamBridge.getPlayerTeam(player);
 
@@ -1073,9 +1076,14 @@ public class TacticalMapHUD implements IGuiOverlay {
 
         renderSelectedDeploymentFrame(guiGraphics, content);
 
+        if (config.showGrid) {
+            TacticalMapGridRenderer.drawChrome(guiGraphics, grid, gridView, gridHover, markerHoverMouseX, markerHoverMouseY,
+                hoveredMapMarker == null ? null : "标记 X: " + hoveredMapMarker.x + "  Z: " + hoveredMapMarker.z,
+                showInteractionChrome);
+        }
         guiGraphics.disableScissor();
         guiGraphics.renderOutline(content.left, content.top, content.width, content.height, 0xCC000000);
-        if (showInteractionChrome) {
+        if (showInteractionChrome && !config.showGrid) {
             renderHoveredMarkerCoordinates(guiGraphics, content);
         }
     }
@@ -2084,32 +2092,6 @@ public class TacticalMapHUD implements IGuiOverlay {
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
     }
 
-    private void renderViewportGrid(GuiGraphics guiGraphics, MapViewport viewport) {
-        double gridStep = chooseGridStep(Math.max(viewport.spanX, viewport.spanZ));
-        int gridColor = 0x33FFFFFF;
-
-        double firstX = Math.ceil(viewport.viewMinX / gridStep) * gridStep;
-        for (double x = firstX; x <= viewport.viewMaxX; x += gridStep) {
-            int screenX = viewport.screenX(x);
-            guiGraphics.fill(screenX, viewport.top, screenX + 1, viewport.bottom(), gridColor);
-        }
-
-        double firstZ = Math.ceil(viewport.viewMinZ / gridStep) * gridStep;
-        for (double z = firstZ; z <= viewport.viewMaxZ; z += gridStep) {
-            int screenY = viewport.screenY(z);
-            guiGraphics.fill(viewport.left, screenY, viewport.right(), screenY + 1, gridColor);
-        }
-    }
-
-    private double chooseGridStep(double span) {
-        double target = span / 8.0D;
-        double step = 16.0D;
-        while (step < target) {
-            step *= 2.0D;
-        }
-        return step;
-    }
-
     /**
      * 使用原版地图玩家标识（map_icons.png / {@link MapDecoration.Type#PLAYER}）。
      * <p>
@@ -2302,7 +2284,7 @@ public class TacticalMapHUD implements IGuiOverlay {
         hoveredMapMarker = null;
         hoveredMapMarkerDistanceSquared = Double.MAX_VALUE;
         markerHoverEnabled = false;
-        if (!allowMouseInteraction) {
+        if (!allowMouseInteraction || markerWheel.active()) {
             return;
         }
 
