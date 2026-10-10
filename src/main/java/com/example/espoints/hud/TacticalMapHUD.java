@@ -484,14 +484,14 @@ public class TacticalMapHUD implements IGuiOverlay {
      * @param screenWidth 屏幕宽度
      * @param screenHeight 屏幕高度
      */
-    /** 小地图滑动偏移：0=就位，-(mapLeft+width+12)= 完全滑出到屏幕左缘之外。 */
-    private double mapSlideOffset(int mapLeft, int mapWidth) {
-        double full = mapLeft + mapWidth + 12.0D;
-        if (mapSlideStartMs <= 0L) return isMapVisible ? 0.0D : -full;
+    /** 小地图滑动偏移：0=就位，+(到屏幕右缘的距离+12)= 完全滑出到屏幕右侧之外。 */
+    private double mapSlideOffset(int mapLeft, int mapWidth, int screenWidth) {
+        double full = Math.max(1.0D, screenWidth - mapLeft + 12.0D);
+        if (mapSlideStartMs <= 0L) return isMapVisible ? 0.0D : full;
         double t = Math.min(1.0D, (System.currentTimeMillis() - mapSlideStartMs) / (double) MAP_SLIDE_MS);
         double u = 1.0D - t;
         double e = 1.0D - u * u * u;   // easeOutCubic
-        return mapSlideTargetVisible ? -full * (1.0D - e) : -full * e;
+        return mapSlideTargetVisible ? full * (1.0D - e) : full * e;
     }
 
     /** 隐藏且动画已结束 —— 不再绘制。 */
@@ -514,7 +514,7 @@ public class TacticalMapHUD implements IGuiOverlay {
         int mapLeft = screenWidth - mapWidth - margin;
         int mapTop = margin;
         // 无标题/底部操作提示；缩放改由滚轮控制（见 onHudMouseScrolled）
-        int slideX = (int) Math.round(mapSlideOffset(mapLeft, mapWidth));
+        int slideX = (int) Math.round(mapSlideOffset(mapLeft, mapWidth, screenWidth));
         renderMapArea(guiGraphics, mapLeft + slideX, mapTop, mapWidth, mapHeight,
             "", false, false, partialTick);
     }

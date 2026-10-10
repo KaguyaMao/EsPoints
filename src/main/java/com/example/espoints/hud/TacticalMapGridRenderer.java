@@ -62,7 +62,8 @@ public final class TacticalMapGridRenderer {
         // Detail numbers are local to the hovered parent: no wall of tiny labels.
         if (hover != null) {
             boolean smallNumbers = TacticalMapGrid.SMALL * v.scaleX >= 25 && TacticalMapGrid.SMALL * v.scaleZ >= 20;
-            numbers(g, grid, v, grid.largeX(hover), grid.largeZ(hover), 50, 0xFFB6D9DA, smallNumbers ? hover.medium() : -1,tooltip);
+            // 中格数字必须按当前中格边长(100)排布，曾硬编码 50 导致位置挤在一起
+            numbers(g, grid, v, grid.largeX(hover), grid.largeZ(hover), TacticalMapGrid.MEDIUM, 0xFFB6D9DA, smallNumbers ? hover.medium() : -1,tooltip);
             numbers(g, grid, v, grid.mediumX(hover), grid.mediumZ(hover), TacticalMapGrid.SMALL, 0xFFE4FFF8, -1,tooltip);
         }
         final int ruler = 13;
