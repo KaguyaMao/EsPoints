@@ -13,7 +13,7 @@ public final class TacticalMarkCatalog {
         new Directory("infantry", "步兵", "mark/enemy/map_genericinfantry.png", "enemy", List.of(TacticalMarkerType.ENEMY_INFANTRY, TacticalMarkerType.ENEMY_MACHINE_GUNNER, TacticalMarkerType.ENEMY_LIGHT_AT, TacticalMarkerType.ENEMY_HEAVY_AT, TacticalMarkerType.ENEMY_SNIPER)),
         new Directory("vehicles", "载具", "mark/enemy/map_truck_logistics.png", "enemy", List.of()),
         new Directory("air", "空中目标", "mark/enemy/map_transporthelo.png", "enemy", List.of(TacticalMarkerType.ENEMY_HELICOPTER, TacticalMarkerType.ENEMY_ATTACK_HELICOPTER, TacticalMarkerType.ENEMY_SCOUT_HELICOPTER, TacticalMarkerType.ENEMY_UAV, TacticalMarkerType.ENEMY_JET)),
-        new Directory("bases", "敌方据点", "map/radio.png", "enemy", List.of(TacticalMarkerType.ENEMY_FOB, TacticalMarkerType.ENEMY_HAB, TacticalMarkerType.ENEMY_RALLY, TacticalMarkerType.ENEMY_REPAIR)),
+        new Directory("bases", "敌方据点", "mark/enemy/deployable_fob.png", "enemy", List.of(TacticalMarkerType.ENEMY_FOB, TacticalMarkerType.ENEMY_HAB, TacticalMarkerType.ENEMY_RALLY, TacticalMarkerType.ENEMY_REPAIR)),
         new Directory("weapons", "固定武器", "mark/enemy/deployable_hmg.png", "enemy", List.of(TacticalMarkerType.ENEMY_MORTAR, TacticalMarkerType.ENEMY_HMG, TacticalMarkerType.ENEMY_AT_WEAPON, TacticalMarkerType.ENEMY_AA_WEAPON)),
         new Directory("hazards", "危险物", "mark/enemy/map_ied.png", "enemy", List.of(TacticalMarkerType.ENEMY_MINE, TacticalMarkerType.ENEMY_IED)),
         new Directory("armour", "装甲载具", "radialenemyicon", "vehicles", List.of(TacticalMarkerType.ENEMY_TANK, TacticalMarkerType.ENEMY_IFV, TacticalMarkerType.ENEMY_APC, TacticalMarkerType.ENEMY_TRACKED_IFV, TacticalMarkerType.ENEMY_TRACKED_APC, TacticalMarkerType.ENEMY_RECON)),
