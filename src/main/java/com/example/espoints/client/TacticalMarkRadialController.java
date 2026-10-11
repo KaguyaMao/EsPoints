@@ -118,6 +118,13 @@ public final class TacticalMarkRadialController {
             menus.add(buildPage(directory.id(), directory.title(), place, navigate, back));
         return List.copyOf(menus);
     }
+    /** 目录图标：含 "/" 视为 EsPoints 贴图路径（textures/gui/…），否则沿用 EsRadial squad 图标名。 */
+    private static ResourceLocation espetroDirectoryIcon(String icon) {
+        return icon != null && icon.indexOf('/') >= 0
+            ? ResourceLocation.fromNamespaceAndPath("espoints", "textures/gui/" + icon)
+            : ResourceLocation.fromNamespaceAndPath("esradial", "textures/squad/" + icon + ".png");
+    }
+
     public static ResourceLocation pageId(String directory) {
         return directory.isEmpty() ? MENU_ID : ResourceLocation.fromNamespaceAndPath("espoints", "mark_" + directory);
     }
@@ -142,7 +149,7 @@ public final class TacticalMarkRadialController {
         }
         for (var child : TacticalMarkCatalog.children(id)) {
             builder.slot("espoints.directory." + child.id(),
-                ResourceLocation.fromNamespaceAndPath("esradial", "textures/squad/" + child.icon() + ".png"),
+                espetroDirectoryIcon(child.icon()),
                 () -> navigate.accept(pageId(child.id())), Component.literal(child.title()), "#FFD5B25C", false)
                 .submenuLast();
         }
