@@ -1,8 +1,6 @@
 package com.example.espoints.network;
 
 import com.example.espoints.config.TacticalMapJsonConfig;
-import com.example.espoints.tactical.TacticalMarkerManager;
-import com.example.espoints.tactical.TacticalMarkerType;
 import com.example.espoints.util.EspetroTeamBridge;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -69,6 +67,7 @@ public class SelectArtillerySupportTargetMessage {
             return;
         }
 
-        TacticalMarkerManager.place(sender, TacticalMarkerType.ARTILLERY_TARGET, x, z);
+        // 不再额外放置战术标点：炮击目标改由覆盖区（红色圆圈）表示，
+        // 原来的 ARTILLERY_TARGET 标点在地图上会显示成一辆卡车图标，属于误导。
     }
 }

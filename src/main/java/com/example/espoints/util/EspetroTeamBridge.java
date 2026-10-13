@@ -343,6 +343,21 @@ public final class EspetroTeamBridge {
                 new Class<?>[] {ServerPlayer.class, double.class, double.class}, player, x, z);
     }
 
+    /** 徐进弹幕：把直线起点与终点交给 Espetro 复核并执行。 */
+    public static boolean submitArtilleryBarrageTarget(ServerPlayer player,
+                                                       double startX, double startZ,
+                                                       double endX, double endZ) {
+        if (player == null || !Double.isFinite(startX) || !Double.isFinite(startZ)
+            || !Double.isFinite(endX) || !Double.isFinite(endZ)) {
+            return false;
+        }
+        Boolean result = invokeStaticBooleanIfPresent(ESPETRO_API_CLASS_NAME,
+            "submitCommanderBarrageTarget",
+            new Class<?>[] {ServerPlayer.class, double.class, double.class, double.class, double.class},
+            player, startX, startZ, endX, endZ);
+        return result != null && result;
+    }
+
     private static boolean isCommanderInternal(ServerPlayer player) {
         if (invokeStaticBoolean(ESPETRO_API_CLASS_NAME, "isCommander",
                 new Class<?>[] {java.util.UUID.class}, player.getUUID())) {

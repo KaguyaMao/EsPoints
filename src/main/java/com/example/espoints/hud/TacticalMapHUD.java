@@ -13,6 +13,7 @@ import com.example.espoints.network.NetworkHandler;
 import com.example.espoints.network.PlaceTacticalMarkerMessage;
 import com.example.espoints.network.RemoveTacticalMarkerMessage;
 import com.example.espoints.network.RequestTacticalMarkersMessage;
+import com.example.espoints.network.SelectArtilleryBarrageTargetMessage;
 import com.example.espoints.network.SelectArtillerySupportTargetMessage;
 import com.example.espoints.network.TacticalMapSubscriptionMessage;
 import com.example.espoints.tactical.TacticalMarker;
@@ -548,6 +549,19 @@ public class TacticalMapHUD implements IGuiOverlay {
                     || System.currentTimeMillis() - artillerySelectionStartedMs > ARTILLERY_SELECTION_TIMEOUT_MS)) {
             endArtillerySelection();
         }
+        // 徐进弹幕：拖动时预览直线（红色）
+        if (artilleryLineDragging && lastInteractiveViewport != null) {
+            double sx = lastInteractiveViewport.screenXd(artilleryLineStartX);
+            double sy = lastInteractiveViewport.screenYd(artilleryLineStartZ);
+            double ex = lastInteractiveViewport.screenXd(artilleryLineEndX);
+            double ey = lastInteractiveViewport.screenYd(artilleryLineEndZ);
+            for (int step = 0; step <= 64; step++) {
+                double t = step / 64.0D;
+                int px = (int) Math.round(sx + (ex - sx) * t);
+                int py = (int) Math.round(sy + (ey - sy) * t);
+                guiGraphics.fill(px, py, px + 2, py + 2, 0xFFE04040);
+            }
+        }
         compactEmbeddedRendering = true;
         try {
             renderMapArea(guiGraphics, mapLeft, mapTop, mapWidth, mapHeight,
@@ -562,6 +576,13 @@ public class TacticalMapHUD implements IGuiOverlay {
 
     /** 选点模式最长存活时间（超过即自动取消）。 */
     private static final long ARTILLERY_SELECTION_TIMEOUT_MS = 30_000L;
+
+    /** 徐进弹幕：是否正在按住右键拖线，以及直线的起点/当前点（世界坐标）。 */
+    private boolean artilleryLineDragging;
+    private double artilleryLineStartX;
+    private double artilleryLineStartZ;
+    private double artilleryLineEndX;
+    private double artilleryLineEndZ;
 
     /** 选点模式开始时间：用于超时自动结束，避免模式跨局残留。 */
     private long artillerySelectionStartedMs;
@@ -586,6 +607,7 @@ public class TacticalMapHUD implements IGuiOverlay {
     public void endArtillerySelection() {
         artillerySelectionMode = false;
         artillerySelectionStartedMs = 0L;
+        artilleryLineDragging = false;
         markerWheel.close();
         suppressMapDragUntilRelease = false;
         draggingMap = false;
@@ -668,6 +690,20 @@ public class TacticalMapHUD implements IGuiOverlay {
         }
     }
 
+    /** 徐进弹幕：拖动过程中实时更新直线终点。 */
+    @SubscribeEvent
+    public void onScreenMouseDragged(net.minecraftforge.client.event.ScreenEvent.MouseDragged.Pre event) {
+        if (!artilleryLineDragging || lastInteractiveViewport == null) {
+            return;
+        }
+        if (!lastInteractiveViewport.containsScreen(event.getMouseX(), event.getMouseY())) {
+            return;
+        }
+        artilleryLineEndX = lastInteractiveViewport.worldX(event.getMouseX());
+        artilleryLineEndZ = lastInteractiveViewport.worldZ(event.getMouseY());
+        event.setCanceled(true);
+    }
+
     /** 地图宿主界面（J 菜单）关闭时结束选点；关掉别的界面不影响。 */
     @SubscribeEvent
     public void onScreenClosing(net.minecraftforge.client.event.ScreenEvent.Closing event) {
@@ -696,6 +732,22 @@ public class TacticalMapHUD implements IGuiOverlay {
             // 超时：本次点击不再当作炮击选点，随后按普通交互处理。
             endArtillerySelection();
         }
+        if (artillerySelectionMode && "line".equals(artilleryTargetMode)
+                && event.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            // 徐进弹幕：按下即开始拖线，松手时提交整条直线
+            if (insideEmbeddedMap && lastInteractiveViewport != null
+                    && lastInteractiveViewport.containsScreen(event.getMouseX(), event.getMouseY())) {
+                artilleryLineDragging = true;
+                artilleryLineStartX = lastInteractiveViewport.worldX(event.getMouseX());
+                artilleryLineStartZ = lastInteractiveViewport.worldZ(event.getMouseY());
+                artilleryLineEndX = artilleryLineStartX;
+                artilleryLineEndZ = artilleryLineStartZ;
+                suppressMapDragUntilRelease = true;
+            }
+            event.setCanceled(true);
+            return;
+        }
+
         if (artillerySelectionMode && event.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
             if (insideEmbeddedMap
                     && lastInteractiveViewport != null
@@ -798,6 +850,22 @@ public class TacticalMapHUD implements IGuiOverlay {
     public void renderMapWheel(ScreenEvent.Render.Post event) { markerWheel.render(event.getGuiGraphics()); }
     @SubscribeEvent
     public void releaseMapWheel(ScreenEvent.MouseButtonReleased.Pre event) {
+        if (artilleryLineDragging && event.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            artilleryLineDragging = false;
+            double dx = artilleryLineEndX - artilleryLineStartX;
+            double dz = artilleryLineEndZ - artilleryLineStartZ;
+            if (dx * dx + dz * dz >= 4.0D) {
+                NetworkHandler.INSTANCE.sendToServer(new SelectArtilleryBarrageTargetMessage(
+                    artilleryLineStartX, artilleryLineStartZ, artilleryLineEndX, artilleryLineEndZ));
+            } else {
+                NetworkHandler.INSTANCE.sendToServer(new SelectArtillerySupportTargetMessage(
+                    artilleryLineStartX, artilleryLineStartZ));
+            }
+            endArtillerySelection();
+            Minecraft.getInstance().setScreen(null);
+            event.setCanceled(true);
+            return;
+        }
         if (markerWheel.mouse(event.getButton(), false)) event.setCanceled(true);
     }
     @SubscribeEvent
@@ -1157,7 +1225,7 @@ public class TacticalMapHUD implements IGuiOverlay {
             drawZoneLine(graphics, xs[i], ys[i], xs[j], ys[j], ARTILLERY_BORDER, clipL, clipT, clipR, clipB);
         }
         if (zone.icon() != null) {
-            int size = 16;
+            int size = 4;   // 图标为原来的 1/4
             graphics.blit(zone.icon(),
                 (int) Math.round(centerX) - size / 2, (int) Math.round(centerY) - size / 2,
                 0, 0, size, size, size, size);
@@ -1241,7 +1309,7 @@ public class TacticalMapHUD implements IGuiOverlay {
         double dx = x2 - x1;
         double dy = y2 - y1;
         double length = Math.sqrt(dx * dx + dy * dy);
-        int steps = (int) Math.max(1.0D, Math.ceil(length / 1.5D));
+        int steps = (int) Math.max(1.0D, Math.ceil(length));
         for (int i = 0; i <= steps; i++) {
             double t = (double) i / steps;
             int px = (int) Math.round(x1 + dx * t);
@@ -1249,7 +1317,7 @@ public class TacticalMapHUD implements IGuiOverlay {
             if (px < clipL || px >= clipR || py < clipT || py >= clipB) {
                 continue;
             }
-            graphics.fill(px, py, px + 2, py + 2, color);
+            graphics.fill(px, py, px + 1, py + 1, color);   // 细描边：只画 1 像素
         }
     }
 
