@@ -60,6 +60,13 @@ public class OpenArtillerySupportMapMessage {
      * 指挥官就在已打开的 J 菜单战术地图上操作。
      */
     private static void enterSelectionMode(String targetMode) {
+        // 只有玩家本地主动点过技能才允许进入选点模式。
+        // 否则（例如服务端在部署阶段自动下发）会一进部署就把地图锁成"只能放炮"。
+        if (!org.espetro.client.gui.CommanderSkillTargetRequest.consumeArmed()) {
+            ModLogger.syncError("Ignored artillery targeting request: no local skill click (mode="
+                + targetMode + ")");
+            return;
+        }
         try {
             Class<?> hudClass = Class.forName("com.example.espoints.hud.TacticalMapHUD");
             Object hud = hudClass.getMethod("getInstance").invoke(null);
