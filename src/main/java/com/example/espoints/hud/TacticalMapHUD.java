@@ -539,6 +539,11 @@ public class TacticalMapHUD implements IGuiOverlay {
         lastEmbeddedMapHeight = mapHeight;
         lastEmbeddedMapScreen = currentScreen;
         lastEmbeddedMapRenderMs = System.currentTimeMillis();
+        // 兜底：内嵌地图所属界面被关闭/切换时结束选点模式，
+        // 避免残留模式下右键被一直当作火炮选点（同时会禁用地图右键菜单）。
+        if (artillerySelectionMode && currentScreen == null) {
+            endArtillerySelection();
+        }
         compactEmbeddedRendering = true;
         try {
             renderMapArea(guiGraphics, mapLeft, mapTop, mapWidth, mapHeight,
@@ -617,6 +622,7 @@ public class TacticalMapHUD implements IGuiOverlay {
         double worldX = lastInteractiveViewport.worldX(mouseX);
         double worldZ = lastInteractiveViewport.worldZ(mouseY);
         NetworkHandler.INSTANCE.sendToServer(new SelectArtillerySupportTargetMessage(worldX, worldZ));
+        endArtillerySelection();
         Minecraft.getInstance().setScreen(null);
         return true;
     }
@@ -661,6 +667,9 @@ public class TacticalMapHUD implements IGuiOverlay {
                 double worldX = lastInteractiveViewport.worldX(event.getMouseX());
                 double worldZ = lastInteractiveViewport.worldZ(event.getMouseY());
                 NetworkHandler.INSTANCE.sendToServer(new SelectArtillerySupportTargetMessage(worldX, worldZ));
+                // 关键：提交后立刻退出选点模式，否则之后每次在地图上右键都会再次开炮，
+                // 而且 artillerySelectionMode 会把地图右键菜单（标点轮盘）一直挡掉。
+                endArtillerySelection();
                 Minecraft.getInstance().setScreen(null);
             }
             event.setCanceled(true);
