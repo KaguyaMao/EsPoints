@@ -1103,6 +1103,156 @@ public class TacticalMapHUD implements IGuiOverlay {
      * @param mapHeight 地图高度
      * @param alpha 透明度
      */
+    /** 火炮覆盖区配色。 */
+    private static final int ARTILLERY_FILL = 0x66E04040;
+    private static final int ARTILLERY_BORDER = 0xFFE04040;
+
+    /**
+     * 绘制本方可见的火炮覆盖区。
+     * 定点炮击 = 圆（半径 90 格）；徐进弹幕 = 长方形（宽 = 覆盖直径）。
+     */
+    private void renderArtilleryZones(GuiGraphics graphics, MapViewport viewport,
+                                      int mapLeft, int mapTop, int mapWidth, int mapHeight) {
+        java.util.List<com.example.espoints.tactical.ArtilleryZoneState.Zone> zones =
+            com.example.espoints.tactical.ArtilleryZoneState.activeForCurrentDimension();
+        if (zones.isEmpty() || viewport == null) {
+            return;
+        }
+        int clipL = mapLeft;
+        int clipT = mapTop;
+        int clipR = mapLeft + mapWidth;
+        int clipB = mapTop + mapHeight;
+        for (com.example.espoints.tactical.ArtilleryZoneState.Zone zone : zones) {
+            if ("line".equals(zone.kind())) {
+                drawBarrageRect(graphics, viewport, zone, clipL, clipT, clipR, clipB);
+            } else {
+                drawArtilleryCircle(graphics, viewport, zone, clipL, clipT, clipR, clipB);
+            }
+        }
+    }
+
+    /** 圆：扫描线填充 + 红色描边 + 中心火炮图标。 */
+    private void drawArtilleryCircle(GuiGraphics graphics, MapViewport viewport,
+                                     com.example.espoints.tactical.ArtilleryZoneState.Zone zone,
+                                     int clipL, int clipT, int clipR, int clipB) {
+        double centerX = viewport.screenXd(zone.x());
+        double centerY = viewport.screenYd(zone.z());
+        double radiusPixels = Math.abs(viewport.screenXd(zone.x() + zone.radius()) - centerX);
+        if (radiusPixels < 1.0D) {
+            radiusPixels = Math.abs(viewport.screenYd(zone.z() + zone.radius()) - centerY);
+        }
+        radiusPixels = Math.max(2.0D, radiusPixels);
+
+        int segments = 48;
+        double[] xs = new double[segments];
+        double[] ys = new double[segments];
+        for (int i = 0; i < segments; i++) {
+            double angle = Math.PI * 2.0D * i / segments;
+            xs[i] = centerX + Math.cos(angle) * radiusPixels;
+            ys[i] = centerY + Math.sin(angle) * radiusPixels;
+        }
+        fillConvexPolygon(graphics, xs, ys, ARTILLERY_FILL, clipL, clipT, clipR, clipB);
+        for (int i = 0; i < segments; i++) {
+            int j = (i + 1) % segments;
+            drawZoneLine(graphics, xs[i], ys[i], xs[j], ys[j], ARTILLERY_BORDER, clipL, clipT, clipR, clipB);
+        }
+        if (zone.icon() != null) {
+            int size = 16;
+            graphics.blit(zone.icon(),
+                (int) Math.round(centerX) - size / 2, (int) Math.round(centerY) - size / 2,
+                0, 0, size, size, size, size);
+        }
+    }
+
+    /** 长方形：以直线为轴线、两侧各扩 radius，得到覆盖走廊。 */
+    private void drawBarrageRect(GuiGraphics graphics, MapViewport viewport,
+                                 com.example.espoints.tactical.ArtilleryZoneState.Zone zone,
+                                 int clipL, int clipT, int clipR, int clipB) {
+        double x1 = viewport.screenXd(zone.x());
+        double y1 = viewport.screenYd(zone.z());
+        double x2 = viewport.screenXd(zone.endX());
+        double y2 = viewport.screenYd(zone.endZ());
+        double dx = x2 - x1;
+        double dy = y2 - y1;
+        double length = Math.sqrt(dx * dx + dy * dy);
+        if (length < 0.001D) {
+            return;
+        }
+        // 覆盖宽度在屏幕上的像素：用世界半径换算
+        double radiusPixels = Math.abs(viewport.screenXd(zone.x() + zone.radius()) - x1);
+        if (radiusPixels < 1.0D) {
+            radiusPixels = Math.abs(viewport.screenYd(zone.z() + zone.radius()) - y1);
+        }
+        radiusPixels = Math.max(2.0D, radiusPixels);
+        double nx = -dy / length * radiusPixels;
+        double ny = dx / length * radiusPixels;
+
+        double[] xs = { x1 + nx, x2 + nx, x2 - nx, x1 - nx };
+        double[] ys = { y1 + ny, y2 + ny, y2 - ny, y1 - ny };
+        fillConvexPolygon(graphics, xs, ys, ARTILLERY_FILL, clipL, clipT, clipR, clipB);
+        for (int i = 0; i < 4; i++) {
+            int j = (i + 1) % 4;
+            drawZoneLine(graphics, xs[i], ys[i], xs[j], ys[j], ARTILLERY_BORDER, clipL, clipT, clipR, clipB);
+        }
+    }
+
+    /** 凸多边形扫描线填充（圆用 48 边形近似，长方形直接用四角）。 */
+    private static void fillConvexPolygon(GuiGraphics graphics, double[] xs, double[] ys, int color,
+                                          int clipL, int clipT, int clipR, int clipB) {
+        int n = xs.length;
+        double minY = Double.MAX_VALUE;
+        double maxY = -Double.MAX_VALUE;
+        for (double y : ys) {
+            minY = Math.min(minY, y);
+            maxY = Math.max(maxY, y);
+        }
+        int from = (int) Math.max(Math.floor(minY), clipT);
+        int to = (int) Math.min(Math.ceil(maxY), clipB);
+        for (int y = from; y < to; y++) {
+            double scanY = y + 0.5D;
+            double left = Double.MAX_VALUE;
+            double right = -Double.MAX_VALUE;
+            for (int i = 0; i < n; i++) {
+                int j = (i + 1) % n;
+                double ay = ys[i];
+                double by = ys[j];
+                if ((scanY < Math.min(ay, by)) || (scanY >= Math.max(ay, by))) {
+                    continue;
+                }
+                double t = (scanY - ay) / (by - ay);
+                double cross = xs[i] + (xs[j] - xs[i]) * t;
+                left = Math.min(left, cross);
+                right = Math.max(right, cross);
+            }
+            if (right <= left) {
+                continue;
+            }
+            int x1 = (int) Math.max(Math.floor(left), clipL);
+            int x2 = (int) Math.min(Math.ceil(right), clipR);
+            if (x2 > x1) {
+                graphics.fill(x1, y, x2, y + 1, color);
+            }
+        }
+    }
+
+    /** 区域描边：用一串小矩形近似线段。 */
+    private static void drawZoneLine(GuiGraphics graphics, double x1, double y1, double x2, double y2,
+                                     int color, int clipL, int clipT, int clipR, int clipB) {
+        double dx = x2 - x1;
+        double dy = y2 - y1;
+        double length = Math.sqrt(dx * dx + dy * dy);
+        int steps = (int) Math.max(1.0D, Math.ceil(length / 1.5D));
+        for (int i = 0; i <= steps; i++) {
+            double t = (double) i / steps;
+            int px = (int) Math.round(x1 + dx * t);
+            int py = (int) Math.round(y1 + dy * t);
+            if (px < clipL || px >= clipR || py < clipT || py >= clipB) {
+                continue;
+            }
+            graphics.fill(px, py, px + 2, py + 2, color);
+        }
+    }
+
     private void renderBirdsEyeView(GuiGraphics guiGraphics, int mapLeft, int mapTop, int mapWidth, int mapHeight,
                                     boolean allowMouseDrag, boolean showInteractionChrome, float partialTick) {
         Minecraft mc = Minecraft.getInstance();
@@ -1157,6 +1307,8 @@ public class TacticalMapHUD implements IGuiOverlay {
         renderFobRadiiOnMap(guiGraphics, content, localTeam);
 
         renderCapturePointsOnMap(guiGraphics, content, player, true);
+        // 火炮覆盖区（红边 + 红色半透明底；圆中心画火炮图标）—— 小地图与 J 菜单大地图共用此处
+        renderArtilleryZones(guiGraphics, content, mapLeft, mapTop, mapWidth, mapHeight);
 
         // 渲染己方兵站
         renderBastionsOnMap(guiGraphics, content, player, false, localTeam);

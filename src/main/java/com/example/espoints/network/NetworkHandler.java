@@ -150,6 +150,12 @@ public class NetworkHandler {
             .consumerMainThread(OpenArtillerySupportMapMessage::handle)
             .add();
 
+        INSTANCE.messageBuilder(SyncArtilleryZonesMessage.class, nextPacketId(), NetworkDirection.PLAY_TO_CLIENT)
+            .encoder(SyncArtilleryZonesMessage::encode)
+            .decoder(SyncArtilleryZonesMessage::decode)
+            .consumerMainThread(SyncArtilleryZonesMessage::handle)
+            .add();
+
         INSTANCE.messageBuilder(SelectArtillerySupportTargetMessage.class, nextPacketId(), NetworkDirection.PLAY_TO_SERVER)
             .encoder(SelectArtillerySupportTargetMessage::encode)
             .decoder(SelectArtillerySupportTargetMessage::decode)
