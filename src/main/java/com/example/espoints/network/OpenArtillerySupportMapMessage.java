@@ -32,7 +32,16 @@ public class OpenArtillerySupportMapMessage {
     }
 
     public static OpenArtillerySupportMapMessage decode(FriendlyByteBuf buf) {
-        return new OpenArtillerySupportMapMessage(buf.readUtf(8));
+        // 向后兼容：旧版发送端没有 targetMode 字段（甚至整个包为空），
+        // 直接 readUtf 会因可读字节不足抛 IndexOutOfBoundsException 并把玩家踢下线。
+        if (buf == null || !buf.isReadable()) {
+            return new OpenArtillerySupportMapMessage("point");
+        }
+        try {
+            return new OpenArtillerySupportMapMessage(buf.readUtf(8));
+        } catch (RuntimeException legacy) {
+            return new OpenArtillerySupportMapMessage("point");
+        }
     }
 
     public static void handle(OpenArtillerySupportMapMessage message,
