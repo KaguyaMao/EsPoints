@@ -539,9 +539,13 @@ public class TacticalMapHUD implements IGuiOverlay {
         lastEmbeddedMapHeight = mapHeight;
         lastEmbeddedMapScreen = currentScreen;
         lastEmbeddedMapRenderMs = System.currentTimeMillis();
-        // 兜底：内嵌地图所属界面被关闭/切换时结束选点模式，
-        // 避免残留模式下右键被一直当作火炮选点（同时会禁用地图右键菜单）。
-        if (artillerySelectionMode && currentScreen == null) {
+        // 兜底：只要地图宿主界面不是当前界面、或选点已超时，就结束选点模式。
+        // 否则残留的模式会把右键一直当成开炮（表现为"菜单点不动"），
+        // 而且往往要等到误放一发炮击后才恢复。
+        if (artillerySelectionMode
+                && (currentScreen == null
+                    || artillerySelectionStartedMs <= 0L
+                    || System.currentTimeMillis() - artillerySelectionStartedMs > ARTILLERY_SELECTION_TIMEOUT_MS)) {
             endArtillerySelection();
         }
         compactEmbeddedRendering = true;
@@ -556,12 +560,19 @@ public class TacticalMapHUD implements IGuiOverlay {
     /** 火炮选点模式：point = 右键点选；line = 按住右键画线（徐进弹幕）。 */
     private String artilleryTargetMode = "point";
 
+    /** 选点模式最长存活时间（超过即自动取消）。 */
+    private static final long ARTILLERY_SELECTION_TIMEOUT_MS = 30_000L;
+
+    /** 选点模式开始时间：用于超时自动结束，避免模式跨局残留。 */
+    private long artillerySelectionStartedMs;
+
     public void beginArtillerySelection() {
         beginArtillerySelection("point");
     }
 
     public void beginArtillerySelection(String mode) {
         artillerySelectionMode = true;
+        artillerySelectionStartedMs = System.currentTimeMillis();
         artilleryTargetMode = "line".equalsIgnoreCase(mode) ? "line" : "point";
         markerWheel.close();
         suppressMapDragUntilRelease = false;
@@ -571,8 +582,11 @@ public class TacticalMapHUD implements IGuiOverlay {
         return artilleryTargetMode;
     }
 
+    /** 选点模式的兜底收尾：换界面、断线、超时都会走到这里。 */
     public void endArtillerySelection() {
-        artillerySelectionMode = false; markerWheel.close();
+        artillerySelectionMode = false;
+        artillerySelectionStartedMs = 0L;
+        markerWheel.close();
         suppressMapDragUntilRelease = false;
         draggingMap = false;
         lastInteractiveViewport = null;
@@ -654,12 +668,34 @@ public class TacticalMapHUD implements IGuiOverlay {
         }
     }
 
+    /** 地图宿主界面（J 菜单）关闭时结束选点；关掉别的界面不影响。 */
+    @SubscribeEvent
+    public void onScreenClosing(net.minecraftforge.client.event.ScreenEvent.Closing event) {
+        if (artillerySelectionMode && event.getScreen() == lastEmbeddedMapScreen) {
+            endArtillerySelection();
+        }
+    }
+
+    /** 断线 / 退出世界时结束选点，避免跨重连残留到下一局。 */
+    @SubscribeEvent
+    public void onLoggingOut(net.minecraftforge.client.event.ClientPlayerNetworkEvent.LoggingOut event) {
+        if (artillerySelectionMode) {
+            endArtillerySelection();
+        }
+    }
+
     @SubscribeEvent
     public void onScreenMouseClicked(ScreenEvent.MouseButtonPressed.Pre event) {
         if (markerWheel.mouse(event.getButton(), true)) { event.setCanceled(true); return; }
         boolean insideEmbeddedMap = isInsideLastEmbeddedMap(event.getMouseX(), event.getMouseY());
         if (!insideEmbeddedMap) return;
 
+        if (artillerySelectionMode
+                && artillerySelectionStartedMs > 0L
+                && System.currentTimeMillis() - artillerySelectionStartedMs > ARTILLERY_SELECTION_TIMEOUT_MS) {
+            // 超时：本次点击不再当作炮击选点，随后按普通交互处理。
+            endArtillerySelection();
+        }
         if (artillerySelectionMode && event.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
             if (insideEmbeddedMap
                     && lastInteractiveViewport != null
