@@ -548,9 +548,22 @@ public class TacticalMapHUD implements IGuiOverlay {
         }
     }
 
+    /** 火炮选点模式：point = 右键点选；line = 按住右键画线（徐进弹幕）。 */
+    private String artilleryTargetMode = "point";
+
     public void beginArtillerySelection() {
-        artillerySelectionMode = true; markerWheel.close();
+        beginArtillerySelection("point");
+    }
+
+    public void beginArtillerySelection(String mode) {
+        artillerySelectionMode = true;
+        artilleryTargetMode = "line".equalsIgnoreCase(mode) ? "line" : "point";
+        markerWheel.close();
         suppressMapDragUntilRelease = false;
+    }
+
+    public String artilleryTargetMode() {
+        return artilleryTargetMode;
     }
 
     public void endArtillerySelection() {
