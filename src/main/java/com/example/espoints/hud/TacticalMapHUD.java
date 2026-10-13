@@ -732,9 +732,9 @@ public class TacticalMapHUD implements IGuiOverlay {
             // 超时：本次点击不再当作炮击选点，随后按普通交互处理。
             endArtillerySelection();
         }
-        if (artillerySelectionMode && "line".equals(artilleryTargetMode)
-                && event.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
-            // 徐进弹幕：按下即开始拖线，松手时提交整条直线
+        if (artillerySelectionMode && event.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            // 同一个火炮技能：按下先进入拖线状态，松手时若几乎没移动就按定点炮击处理，
+            // 拖动距离足够就按徐进弹幕提交整条直线。
             if (insideEmbeddedMap && lastInteractiveViewport != null
                     && lastInteractiveViewport.containsScreen(event.getMouseX(), event.getMouseY())) {
                 artilleryLineDragging = true;
