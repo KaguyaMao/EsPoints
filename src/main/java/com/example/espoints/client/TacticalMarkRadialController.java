@@ -171,23 +171,21 @@ public final class TacticalMarkRadialController {
             }
             return builder.build();
         }
-        // 简化敌军页：12 方位扁平排列，不再进入子菜单。
+        // 简化敌军页：8 个标按 12 方位排布，不再进入子菜单。
+        // 每个标 = 一个槽位，占 2 或 1 个小时扇区（宽标就是单个 60° 的宽按钮）。
         // 注意：EsRadial 的 RadialLayout 只要存在自定义扇区，就要求「每个槽位恰好一个扇区」，
-        // 所以这里用 12 个小时槽（每槽 30°）= 12 个扇区，并且不添加 backSlot（否则槽位会多出一个而崩溃）。
+        // 所以这里 8 槽 = 8 扇区，并且不添加 backSlot（否则槽位会多出一个而崩溃）。
         if (SIMPLE_ENEMY_ID.equals(id)) {
             var marks = TacticalMarkCatalog.simpleEnemyMarks();
             var spans = TacticalMarkCatalog.simpleEnemySpans();
-            int hour = 0;   // 0 = 12 点方向，顺时针每小时 30°
+            int angle = 0;   // 0° = 12 点方向，顺时针每格 30°
             for (int i = 0; i < marks.size() && i < spans.size(); i++) {
                 TacticalMarkerType type = marks.get(i);
                 int span = spans.get(i);
-                for (int k = 0; k < span; k++) {
-                    builder.slot("espoints.mark." + type.name() + "." + k,
-                        TacticalMarkerIcons.textureFor(type),
-                        () -> place.accept(type), Component.literal(type.getDisplayName()), "#FFE05252")
-                        .sectorLast(hour * 30, 30);
-                    hour++;
-                }
+                builder.slot("espoints.mark." + type.name(), TacticalMarkerIcons.textureFor(type),
+                    () -> place.accept(type), Component.literal(type.getDisplayName()), "#FFE05252")
+                    .sectorLast(angle, span * 30);
+                angle += span * 30;
             }
             return builder.build();
         }
