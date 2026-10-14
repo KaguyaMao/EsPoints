@@ -340,6 +340,16 @@ public class TacticalMapHUD implements IGuiOverlay {
     /**
      * 获取地图是否可见（按键唤出模式下）
      */
+    /** 立刻关闭 V 键小地图（J 菜单打开时由 Espetro 调用）。 */
+    public void hideMinimap() {
+        if (!isMapVisible) {
+            return;
+        }
+        isMapVisible = false;
+        mapSlideStartMs = System.currentTimeMillis();
+        mapSlideTargetVisible = false;
+    }
+
     public boolean isMapVisible() {
         return isMapVisible;
     }
@@ -518,6 +528,33 @@ public class TacticalMapHUD implements IGuiOverlay {
         int slideX = (int) Math.round(mapSlideOffset(mapLeft, mapWidth, screenWidth));
         renderMapArea(guiGraphics, mapLeft + slideX, mapTop, mapWidth, mapHeight,
             "", false, false, partialTick);
+
+        // 地图下方注释：当前地图网格坐标 + 缩放说明
+        int annoLeft = mapLeft + slideX;
+        int annoY = mapTop + mapHeight + 2;
+        guiGraphics.fill(annoLeft, annoY, annoLeft + mapWidth, annoY + 1, 0x80FFFFFF);
+        drawMapText(guiGraphics, currentGridLabel() + "  ctrl+滚轮缩放地图",
+            annoLeft, annoY + 3, 0xFFEAFBF7);
+    }
+
+    /** 玩家所在地图网格坐标，例如 (F,1,1,1)。 */
+    private String currentGridLabel() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null) {
+            return "(-)";
+        }
+        try {
+            com.example.espoints.config.TacticalMapJsonConfig.TacticalMapBounds bounds =
+                com.example.espoints.config.TacticalMapJsonConfig.getInstance().getBounds();
+            com.example.espoints.tactical.TacticalMapGrid grid =
+                new com.example.espoints.tactical.TacticalMapGrid(
+                    bounds.minX, bounds.minZ, bounds.maxX, bounds.maxZ);
+            return grid.address(minecraft.player.getX(), minecraft.player.getZ())
+                .map(com.example.espoints.tactical.TacticalMapGrid.Address::label)
+                .orElse("(-)");
+        } catch (RuntimeException error) {
+            return "(-)";
+        }
     }
 
     public void renderEmbeddedMap(GuiGraphics guiGraphics, int mapLeft, int mapTop, int mapWidth, int mapHeight, float partialTick) {
@@ -674,6 +711,10 @@ public class TacticalMapHUD implements IGuiOverlay {
             return;
         }
         if (!isMapVisible) {
+            return;
+        }
+        // 只有按住 Ctrl 时滚轮才缩放地图；否则放行，交给原版滚轮切换物品。
+        if (!net.minecraft.client.gui.screens.Screen.hasControlDown()) {
             return;
         }
         zoomFromMouseWheel(event.getScrollDelta());
