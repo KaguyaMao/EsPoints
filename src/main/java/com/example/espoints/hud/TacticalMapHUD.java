@@ -16,6 +16,7 @@ import com.example.espoints.network.RequestTacticalMarkersMessage;
 import com.example.espoints.network.SelectArtilleryBarrageTargetMessage;
 import com.example.espoints.network.SelectArtillerySupportTargetMessage;
 import com.example.espoints.network.TacticalMapSubscriptionMessage;
+import com.example.espoints.tactical.MapIconResolver;
 import com.example.espoints.tactical.TacticalMarker;
 import com.example.espoints.tactical.TacticalMarkerType;
 import com.example.espoints.tile.TacticalMapPyramidLayout;
@@ -55,6 +56,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -124,6 +126,8 @@ public class TacticalMapHUD implements IGuiOverlay {
     private static final int CAPTURE_POINT_MARKER_SIZE = 3;
     private static final int BASTION_MARKER_SIZE = 12;
     private static final int VEHICLE_SUPPLY_STATION_MARKER_SIZE = 6;
+    /** 固定武器图标尺寸（略大于补给站，低于兵站）。 */
+    private static final int FIXED_WEAPON_MARKER_SIZE = 7;
     private static final int BASE_MARKER_SIZE = 7;
     // 与主基地/兵站同量级（blit 时 half = size/2，约 10–12 像素）。
     private static final int TACTICAL_MARKER_SIZE = 10;
@@ -169,6 +173,7 @@ public class TacticalMapHUD implements IGuiOverlay {
     private List<SyncBastionsMessage.BastionInfo> visibleBastions = List.of();
     private List<SyncBastionsMessage.BaseInfo> visibleBases = List.of();
     private List<SyncBastionsMessage.VehicleSupplyStationInfo> visibleVehicleSupplyStations = List.of();
+    private List<SyncBastionsMessage.FixedWeaponInfo> visibleFixedWeapons = List.of();
     private List<TacticalMarker> visibleTacticalMarkers = List.of();
     private com.example.espoints.network.SyncFriendlyVehiclesMessage friendlyVehicleFrame;
     private long lastFriendlyVehicleFrame;
@@ -279,6 +284,7 @@ public class TacticalMapHUD implements IGuiOverlay {
         this.visibleBastions = List.copyOf(bastions);
         this.visibleBases = List.of();
         this.visibleVehicleSupplyStations = List.of();
+        this.visibleFixedWeapons = List.of();
         staticMapRevision++;
     }
 
@@ -290,11 +296,19 @@ public class TacticalMapHUD implements IGuiOverlay {
     public void syncBastionsFromServer(List<SyncBastionsMessage.BastionInfo> bastions,
                                        List<SyncBastionsMessage.BaseInfo> bases,
                                        List<SyncBastionsMessage.VehicleSupplyStationInfo> vehicleSupplyStations) {
+        syncBastionsFromServer(bastions, bases, vehicleSupplyStations, List.of());
+    }
+
+    public void syncBastionsFromServer(List<SyncBastionsMessage.BastionInfo> bastions,
+                                       List<SyncBastionsMessage.BaseInfo> bases,
+                                       List<SyncBastionsMessage.VehicleSupplyStationInfo> vehicleSupplyStations,
+                                       List<SyncBastionsMessage.FixedWeaponInfo> fixedWeapons) {
         this.visibleBastions = List.copyOf(bastions);
         this.visibleBases = List.copyOf(bases);
         this.visibleVehicleSupplyStations = vehicleSupplyStations == null
             ? List.of()
             : List.copyOf(vehicleSupplyStations);
+        this.visibleFixedWeapons = fixedWeapons == null ? List.of() : List.copyOf(fixedWeapons);
         staticMapRevision++;
     }
 
@@ -433,6 +447,7 @@ public class TacticalMapHUD implements IGuiOverlay {
         visibleBastions = List.of();
         visibleBases = List.of();
         visibleVehicleSupplyStations = List.of();
+        visibleFixedWeapons = List.of();
         visibleTacticalMarkers = List.of();
         allPoints = List.of();
         ClientTacticalMapTileCache.get().clear();
@@ -1494,6 +1509,8 @@ public class TacticalMapHUD implements IGuiOverlay {
         renderBastionsOnMap(guiGraphics, content, player, false, localTeam);
 
         renderVehicleSupplyStationsOnMap(guiGraphics, content, false, localTeam);
+        // 固定武器与其它地图内容同一批绘制（在 drawRuler 之前），层级与既有图标一致。
+        renderFixedWeaponsOnMap(guiGraphics, content, localTeam);
         renderFriendlyVehicles(guiGraphics, content, localTeam);
 
         renderTacticalMarkersOnMap(guiGraphics, content, false, localTeam);
@@ -1663,6 +1680,106 @@ public class TacticalMapHUD implements IGuiOverlay {
             renderMapLabel(guiGraphics, "station:" + station.getTeam() + ":" + pos.asLong(),
                 3, name, mapPosX, mapPosY, size + 4, -size / 2, 0xFFFFFF);
         }
+    }
+
+    /**
+     * 绘制固定武器。图标优先用编制 {@code map_icon}（走 {@link MapIconResolver} 的
+     * 白名单/存在性校验），缺省或非法时按 {@code weaponTypeId} 走默认映射。
+     */
+    private void renderFixedWeaponsOnMap(GuiGraphics guiGraphics, MapViewport viewport,
+                                         String localTeam) {
+        if (visibleFixedWeapons.isEmpty()) {
+            return;
+        }
+
+        for (SyncBastionsMessage.FixedWeaponInfo weapon : visibleFixedWeapons) {
+            if (!isVisibleTeamMarker(localTeam, weapon.getTeam())) {
+                continue;
+            }
+
+            BlockPos pos = weapon.getPos();
+            if (!viewport.containsWorld(pos.getX(), pos.getZ())) {
+                continue;
+            }
+
+            TacticalMapStaticProjection.ScreenPoint projected = staticProjection.point(
+                "fixedweapon:" + weapon.getId() + ":" + pos.asLong(),
+                viewport.screenXd(pos.getX()), viewport.screenYd(pos.getZ()));
+            double mapPosX = projected.x();
+            double mapPosY = projected.y();
+            int size = Math.round(FIXED_WEAPON_MARKER_SIZE
+                * getSelectedDeploymentScale(pos.getX(), pos.getZ()));
+            blitMapIcon(guiGraphics, mapPosX, mapPosY, size,
+                fixedWeaponIcon(weapon), COLOR_FRIENDLY_WHITE);
+            considerMarkerHover(mapPosX, mapPosY, size, pos.getX(), pos.getZ());
+
+            if (markerHoverEnabled
+                && Math.hypot(markerHoverMouseX - mapPosX, markerHoverMouseY - mapPosY) < 5) {
+                Minecraft minecraft = Minecraft.getInstance();
+                String name = fixedWeaponDisplayName(weapon.getWeaponTypeId());
+                String details = name + " · " + weapon.getTeam();
+                guiGraphics.drawString(minecraft.font, details,
+                    (int) mapPosX + 10, (int) mapPosY - 5, COLOR_FRIENDLY_WHITE, true);
+            }
+        }
+    }
+
+    /**
+     * 固定武器图标解析：配置图标 → 武器类型默认图标 → 工事兜底图标。
+     * 解析结果全部走 {@link MapIconResolver} 的存在性缓存，逐帧不查资源包。
+     */
+    private static ResourceLocation fixedWeaponIcon(SyncBastionsMessage.FixedWeaponInfo weapon) {
+        String fallback = defaultFixedWeaponIcon(weapon.getWeaponTypeId());
+        ResourceLocation resolved = MapIconResolver.resolve(
+            weapon.getMapIcon(), fallback, "deployable_fob.png");
+        return resolved == null
+            ? ResourceLocation.fromNamespaceAndPath(ESPointsMod.MOD_ID,
+                MapIconResolver.ICON_DIR + "deployable_fob.png")
+            : resolved;
+    }
+
+    /**
+     * {@code weaponTypeId}（= 工事定义 id，如 {@code espetro:hmg} / {@code espetro:at_gun}）
+     * 到默认图标文件名的映射；未命中返回工事兜底图标。
+     */
+    private static String defaultFixedWeaponIcon(String weaponTypeId) {
+        String type = weaponTypeId == null ? "" : weaponTypeId.toLowerCase(Locale.ROOT);
+        if (hasKeyword(type, "anti_tank_gun", "antitankgun", "at_gun", "atgun", "tow")) {
+            return "deployable_anti_tank_gun.png";
+        }
+        if (hasKeyword(type, "anti_tank", "antitank", "atgm", "hj", "javelin")) {
+            return "deployable_anti_tank.png";
+        }
+        if (hasKeyword(type, "antiair", "anti_air", "aa_gun", "aagun", "aa")) {
+            return "deployable_antiairgun.png";
+        }
+        if (hasKeyword(type, "rocket", "ub32", "mlrs", "hellcannon")) {
+            return "deployable_ub32rockets.png";
+        }
+        if (hasKeyword(type, "mortar")) return "deployable_mortars.png";
+        if (hasKeyword(type, "gmg", "grenade", "ags")) return "deployable_gmg.png";
+        if (hasKeyword(type, "hmg", "mg", "machinegun")) return "deployable_hmg.png";
+        if (hasKeyword(type, "ammo")) return "deployable_ammocrate.png";
+        if (hasKeyword(type, "repair", "service")) return "deployable_repairstation.png";
+        return "deployable_fob.png";
+    }
+
+    private static boolean hasKeyword(String type, String... fragments) {
+        for (String fragment : fragments) {
+            if (type.contains(fragment)) return true;
+        }
+        return false;
+    }
+
+    /** 悬浮提示里显示的武器名：去掉命名空间，保留原文便于对上编制 id。 */
+    private static String fixedWeaponDisplayName(String weaponTypeId) {
+        if (weaponTypeId == null || weaponTypeId.isBlank()) {
+            return "固定武器";
+        }
+        int separator = weaponTypeId.indexOf(':');
+        return separator >= 0 && separator + 1 < weaponTypeId.length()
+            ? weaponTypeId.substring(separator + 1)
+            : weaponTypeId;
     }
 
     private void renderFobRadiiOnMap(GuiGraphics guiGraphics, MapViewport viewport, String localTeam) {

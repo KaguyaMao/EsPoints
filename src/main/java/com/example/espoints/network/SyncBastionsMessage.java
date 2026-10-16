@@ -18,10 +18,12 @@ public class SyncBastionsMessage {
     private static final int MAX_BASTIONS = 256;
     private static final int MAX_BASES = 64;
     private static final int MAX_SUPPLY_STATIONS = 128;
+    private static final int MAX_FIXED_WEAPONS = 256;
     private static final String TACTICAL_MAP_HUD_CLASS = "com.example.espoints.hud.TacticalMapHUD";
     private final List<BastionInfo> bastions;
     private final List<BaseInfo> bases;
     private final List<VehicleSupplyStationInfo> vehicleSupplyStations;
+    private final List<FixedWeaponInfo> fixedWeapons;
 
     public SyncBastionsMessage(List<BastionInfo> bastions) {
         this(bastions, List.of());
@@ -33,9 +35,16 @@ public class SyncBastionsMessage {
 
     public SyncBastionsMessage(List<BastionInfo> bastions, List<BaseInfo> bases,
                                List<VehicleSupplyStationInfo> vehicleSupplyStations) {
+        this(bastions, bases, vehicleSupplyStations, List.of());
+    }
+
+    public SyncBastionsMessage(List<BastionInfo> bastions, List<BaseInfo> bases,
+                               List<VehicleSupplyStationInfo> vehicleSupplyStations,
+                               List<FixedWeaponInfo> fixedWeapons) {
         this.bastions = List.copyOf(bastions);
         this.bases = List.copyOf(bases);
         this.vehicleSupplyStations = List.copyOf(vehicleSupplyStations);
+        this.fixedWeapons = List.copyOf(fixedWeapons);
     }
 
     public static class BastionInfo {
@@ -226,6 +235,60 @@ public class SyncBastionsMessage {
         }
     }
 
+    /** 战术地图上的固定武器（已启用 fixed_weapon 的工事）。 */
+    public static class FixedWeaponInfo {
+        private final String id;
+        private final String team;
+        private final BlockPos pos;
+        private final String weaponTypeId;
+        private final String mapIcon;
+
+        public FixedWeaponInfo(String id, String team, BlockPos pos,
+                               String weaponTypeId, String mapIcon) {
+            this.id = id == null ? "" : id;
+            this.team = team;
+            this.pos = pos;
+            this.weaponTypeId = weaponTypeId == null ? "" : weaponTypeId;
+            String icon = mapIcon == null ? "" : mapIcon.trim();
+            this.mapIcon = icon.isEmpty() ? null : icon;
+        }
+
+        public String getId() {
+            return id;
+        }
+
+        public String getTeam() {
+            return team;
+        }
+
+        public BlockPos getPos() {
+            return pos;
+        }
+
+        public String getWeaponTypeId() {
+            return weaponTypeId;
+        }
+
+        /** 编制 {@code map_icon} 给的文件名；null = 交给客户端默认映射。 */
+        public String getMapIcon() {
+            return mapIcon;
+        }
+
+        @Override
+        public boolean equals(Object object) {
+            if (this == object) return true;
+            if (!(object instanceof FixedWeaponInfo other)) return false;
+            return id.equals(other.id) && team.equals(other.team) && pos.equals(other.pos)
+                && weaponTypeId.equals(other.weaponTypeId)
+                && Objects.equals(mapIcon, other.mapIcon);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(id, team, pos, weaponTypeId, mapIcon);
+        }
+    }
+
     public static void encode(SyncBastionsMessage msg, FriendlyByteBuf buf) {
         PacketValidation.checkedCount(msg.bastions.size(), MAX_BASTIONS, "bastion");
         PacketValidation.checkedCount(msg.bases.size(), MAX_BASES, "base");
@@ -264,6 +327,17 @@ public class SyncBastionsMessage {
             buf.writeUtf(station.getName(), 64);
             buf.writeUtf(station.getTeam(), 32);
             buf.writeBlockPos(station.getPos());
+        }
+
+        PacketValidation.checkedCount(msg.fixedWeapons.size(), MAX_FIXED_WEAPONS, "fixed weapon");
+        buf.writeVarInt(msg.fixedWeapons.size());
+        for (FixedWeaponInfo weapon : msg.fixedWeapons) {
+            validateFixedWeapon(weapon);
+            buf.writeUtf(weapon.getId(), 128);
+            buf.writeUtf(weapon.getTeam(), 32);
+            buf.writeBlockPos(weapon.getPos());
+            buf.writeUtf(weapon.getWeaponTypeId(), 128);
+            buf.writeUtf(weapon.getMapIcon() == null ? "" : weapon.getMapIcon(), 64);
         }
     }
 
@@ -319,7 +393,21 @@ public class SyncBastionsMessage {
             validateCommon(name, team, pos);
             stations.add(new VehicleSupplyStationInfo(name, team, pos));
         }
-        return new SyncBastionsMessage(bastions, bases, stations);
+
+        int weaponSize = PacketValidation.checkedCount(
+            buf.readVarInt(), MAX_FIXED_WEAPONS, "fixed weapon");
+        List<FixedWeaponInfo> fixedWeapons = new ArrayList<>(weaponSize);
+        for (int i = 0; i < weaponSize; i++) {
+            String id = buf.readUtf(128);
+            String team = buf.readUtf(32);
+            BlockPos pos = buf.readBlockPos();
+            String weaponTypeId = buf.readUtf(128);
+            String mapIcon = buf.readUtf(64);
+            FixedWeaponInfo weapon = new FixedWeaponInfo(id, team, pos, weaponTypeId, mapIcon);
+            validateFixedWeapon(weapon);
+            fixedWeapons.add(weapon);
+        }
+        return new SyncBastionsMessage(bastions, bases, stations, fixedWeapons);
     }
 
     private static void validateBastion(BastionInfo bastion) {
@@ -337,6 +425,19 @@ public class SyncBastionsMessage {
         }
     }
 
+    private static void validateFixedWeapon(FixedWeaponInfo weapon) {
+        if (weapon.getId() == null || weapon.getId().isBlank() || weapon.getId().length() > 128
+            || weapon.getTeam() == null || weapon.getTeam().length() > 32
+            || weapon.getPos() == null
+            || weapon.getWeaponTypeId() == null || weapon.getWeaponTypeId().length() > 128) {
+            throw new IllegalArgumentException("Invalid fixed weapon payload");
+        }
+        String icon = weapon.getMapIcon();
+        if (icon != null && icon.length() > 64) {
+            throw new IllegalArgumentException("Invalid fixed weapon map icon");
+        }
+    }
+
     private static void validateCommon(String name, String team, BlockPos pos) {
         if (name == null || name.isBlank() || name.length() > 64
             || team == null || team.length() > 32 || pos == null) {
@@ -348,19 +449,22 @@ public class SyncBastionsMessage {
         NetworkEvent.Context context = contextSupplier.get();
         context.enqueueWork(() -> {
             if (context.getDirection().getReceptionSide().isClient()) {
-                handleOnClient(msg.bastions, msg.bases, msg.vehicleSupplyStations);
+                handleOnClient(msg.bastions, msg.bases, msg.vehicleSupplyStations,
+                    msg.fixedWeapons);
             }
         });
         context.setPacketHandled(true);
     }
 
     private static void handleOnClient(List<BastionInfo> bastions, List<BaseInfo> bases,
-                                       List<VehicleSupplyStationInfo> vehicleSupplyStations) {
+                                       List<VehicleSupplyStationInfo> vehicleSupplyStations,
+                                       List<FixedWeaponInfo> fixedWeapons) {
         try {
             Class<?> hudClass = Class.forName(TACTICAL_MAP_HUD_CLASS);
             Object hud = hudClass.getMethod("getInstance").invoke(null);
-            hudClass.getMethod("syncBastionsFromServer", List.class, List.class, List.class)
-                .invoke(hud, bastions, bases, vehicleSupplyStations);
+            hudClass.getMethod("syncBastionsFromServer", List.class, List.class, List.class,
+                    List.class)
+                .invoke(hud, bastions, bases, vehicleSupplyStations, fixedWeapons);
         } catch (ReflectiveOperationException e) {
             // 客户端 HUD 不可用时忽略兵站显示同步，避免影响主功能。
         }
@@ -379,9 +483,15 @@ public class SyncBastionsMessage {
 
     public static void sendToPlayer(ServerPlayer player, List<BastionInfo> bastions, List<BaseInfo> bases,
                                     List<VehicleSupplyStationInfo> vehicleSupplyStations) {
+        sendToPlayer(player, bastions, bases, vehicleSupplyStations, List.of());
+    }
+
+    public static void sendToPlayer(ServerPlayer player, List<BastionInfo> bastions, List<BaseInfo> bases,
+                                    List<VehicleSupplyStationInfo> vehicleSupplyStations,
+                                    List<FixedWeaponInfo> fixedWeapons) {
         NetworkHandler.INSTANCE.send(
                 PacketDistributor.PLAYER.with(() -> player),
-                new SyncBastionsMessage(bastions, bases, vehicleSupplyStations)
+                new SyncBastionsMessage(bastions, bases, vehicleSupplyStations, fixedWeapons)
         );
     }
 }

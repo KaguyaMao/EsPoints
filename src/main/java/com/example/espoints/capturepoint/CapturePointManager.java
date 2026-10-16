@@ -134,7 +134,8 @@ public class CapturePointManager {
 
     private record BastionSyncState(List<SyncBastionsMessage.BastionInfo> bastions,
                                     List<SyncBastionsMessage.BaseInfo> bases,
-                                    List<SyncBastionsMessage.VehicleSupplyStationInfo> vehicleSupplyStations) {
+                                    List<SyncBastionsMessage.VehicleSupplyStationInfo> vehicleSupplyStations,
+                                    List<SyncBastionsMessage.FixedWeaponInfo> fixedWeapons) {
     }
 
     
@@ -2221,7 +2222,7 @@ public class CapturePointManager {
         String team = getVisibleEspetroBastionTeam(player);
         String dimension = player.serverLevel().dimension().location().toString();
         if (team == null || team.isBlank()) {
-            return new BastionSyncState(List.of(), List.of(), List.of());
+            return new BastionSyncState(List.of(), List.of(), List.of(), List.of());
         }
         String cacheKey = team + "\n" + dimension;
         BastionSyncState shared = tacticalStateByTeam.computeIfAbsent(
@@ -2235,7 +2236,8 @@ public class CapturePointManager {
             .ifPresent(point -> bases.add(new SyncBastionsMessage.BaseInfo(
                 "原部署点", team, new BlockPos(point.x(), point.y(), point.z()), 0.0F)));
         return new BastionSyncState(
-            shared.bastions(), List.copyOf(bases), shared.vehicleSupplyStations());
+            shared.bastions(), List.copyOf(bases), shared.vehicleSupplyStations(),
+            shared.fixedWeapons());
     }
 
     private BastionSyncState createSharedTacticalState(
@@ -2279,8 +2281,18 @@ public class CapturePointManager {
                     station.name(), station.team(),
                     new BlockPos(station.x(), station.y(), station.z())))
                 .toList();
+        List<SyncBastionsMessage.FixedWeaponInfo> fixedWeapons =
+            snapshot.fixedWeapons().stream()
+                .filter(weapon -> team.equals(weapon.team())
+                    && dimension.equals(weapon.dimension()))
+                .map(weapon -> new SyncBastionsMessage.FixedWeaponInfo(
+                    weapon.id(), weapon.team(),
+                    new BlockPos(weapon.x(), weapon.y(), weapon.z()),
+                    weapon.weaponTypeId(), weapon.mapIcon()))
+                .toList();
         return new BastionSyncState(
-            List.copyOf(bastions), List.copyOf(bases), List.copyOf(stations));
+            List.copyOf(bastions), List.copyOf(bases), List.copyOf(stations),
+            List.copyOf(fixedWeapons));
     }
 
     private void sendBastionStateToPlayer(ServerPlayer player, BastionSyncState state) {
@@ -2291,7 +2303,8 @@ public class CapturePointManager {
 
         lastBastionSyncByPlayer.put(player.getUUID(), state);
         SyncBastionsMessage.sendToPlayer(
-            player, state.bastions(), state.bases(), state.vehicleSupplyStations());
+            player, state.bastions(), state.bases(), state.vehicleSupplyStations(),
+            state.fixedWeapons());
     }
 
     private List<SyncBastionsMessage.BastionInfo> getVisibleEspetroBastions(ServerPlayer player) {

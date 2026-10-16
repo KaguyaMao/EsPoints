@@ -32,7 +32,7 @@ HCR AAD 是 Minecraft Forge 1.20.1 的行动攻防、据点和战术地图模组
 客户端和服务器均需安装 HCR AAD、Espetro、Tetrachord Lib 1.20+1.0.3、MUtil、
 Ping Wheel、EsRadial、ApricityUI 与 OELib（Espetro 自身的前置仍需安装）。
 普通配置、据点和选点窗口使用 MUtil；战术标点轮盘使用 ApricityUI / EsRadial，世界射线与显示复用
-Ping Wheel。协议版本为 `16`，客户端与服务器必须成套更新。
+Ping Wheel。协议版本为 `20`，客户端与服务器必须成套更新。
 
 ## 默认按键
 
