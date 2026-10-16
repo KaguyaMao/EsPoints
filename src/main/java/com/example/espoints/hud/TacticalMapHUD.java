@@ -555,6 +555,19 @@ public class TacticalMapHUD implements IGuiOverlay {
         renderMapArea(guiGraphics, mapLeft + slideX, mapTop, mapWidth, mapHeight,
             "", false, false, partialTick);
 
+        // 坐标尺压在全部地图内容之上的"最后一环"。
+        // AUI(ApricityUI) 的图片/字体绘制是「先入队、后出图」：FontDrawer/ImageDrawer 只是把四边形
+        // 塞进全局 TextureRenderQueue，真正上屏要等某个 AUI 文档绘制结束时的
+        // Base.commitDraws() -> ImageDrawer.flushBatch()（实测 apricityui 1.2.6：ImageDrawer 内部仅
+        // 在 drawComplexBackground / drawTiledPart / drawPlaceholder 里 flush，字体路径没有）。
+        // V 键小地图没有 Screen、也没有 AUI 文档，下一次提交只会发生在「下一帧 HUD 阶段的 AUI 叠加层」
+        // （AUI 的 Client.drawOverlay 挂 RenderGuiEvent.Post，默认 NORMAL 优先级 —— 早于本 HUD 的
+        // LOWEST），于是刻度即使调用顺序在最后，也会被推迟到"当帧地图内容之前"上屏、再被地图内容盖住。
+        // 这里在小地图整块画完后立刻主动 flush 一次，刻度就在本帧本位置真正出图，位于全部地图内容之上；
+        // 仍然是同一次 HUD 绘制流程，没有新增事件订阅、也没有新增叠加层。
+        // J 菜单大地图不走这里（它的刻度由屏幕内 AUI 文档自身的提交刷出，本来就在地图内容之后）。
+        flushDeferredMapText();
+
         // 地图下方注释：当前地图网格坐标 + 缩放说明
         int annoLeft = mapLeft + slideX;
         int annoY = mapTop + mapHeight + 2;
@@ -563,6 +576,25 @@ public class TacticalMapHUD implements IGuiOverlay {
             annoLeft, annoY + 3, 0xFFEAFBF7);
         // 同一行最右侧：己方票数（固定「进攻方/防守方:攻/守」顺序），右对齐贴住小地图右缘。
         drawTroopCountRightAligned(guiGraphics, annoLeft, annoY + 3, mapWidth);
+    }
+
+    /** AUI 延迟队列刷新失败只提示一次，避免每帧刷日志（也绝不让 HUD 因它崩掉）。 */
+    private static boolean deferredTextFlushFailed;
+
+    /**
+     * 立刻把 AUI 已入队的图片/文字刷上屏 —— 也就是坐标尺刻度的真正出图点。
+     * <p>见 {@link #renderMinimapHud} 中的说明：AUI 只在文档提交时 flush，而 V 小地图没有文档。</p>
+     */
+    private static void flushDeferredMapText() {
+        if (deferredTextFlushFailed) {
+            return;
+        }
+        try {
+            com.sighs.apricityui.render.ImageDrawer.flushBatch();
+        } catch (Throwable error) {
+            deferredTextFlushFailed = true;
+            ModLogger.error("刷新 AUI 延迟绘制队列失败，坐标尺可能被地图内容盖住", error);
+        }
     }
 
     /** 注释行最右侧的票数文本：右对齐贴住小地图右缘，颜色比左侧说明略淡。 */
