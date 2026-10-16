@@ -190,7 +190,7 @@ public class TacticalMapHUD implements IGuiOverlay {
                 graphics.pose().mulPose(Axis.ZP.rotationDegrees(vehicle.yaw() + 180));
                 // 载具图标缩到原来的 1/4（12 → 3）
                 blitMapIcon(graphics, 0, 0, 3,
-                    com.example.espoints.tactical.FriendlyVehicleIcons.texture(vehicle.type()),
+                    com.example.espoints.tactical.FriendlyVehicleIcons.texture(vehicle.type(), vehicle.mapIcon()),
                     vehicle.loaded() ? COLOR_FRIENDLY_WHITE : 0x99FFFFFF);
             } finally { graphics.pose().popPose(); }
             if (markerHoverEnabled && Math.hypot(markerHoverMouseX - x, markerHoverMouseY - y) < 5) {

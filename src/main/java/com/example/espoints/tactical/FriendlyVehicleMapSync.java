@@ -33,10 +33,17 @@ public final class FriendlyVehicleMapSync {
                 .filter(v -> key.equals(EspetroTeamBridge.canonicalizeTeamName(v.team())))
                 .limit(SyncFriendlyVehiclesMessage.MAX_VEHICLES)
                 .map(v -> new SyncFriendlyVehiclesMessage.Vehicle(v.id(), bounded(v.type()), bounded(v.name()), v.x(), v.z(),
-                    v.yaw(), v.passengers(), v.squadId(), v.loaded())).toList());
+                    v.yaw(), v.passengers(), v.squadId(), v.loaded(),
+                    boundedIcon(v.mapIcon()))).toList());
             NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
                 new SyncFriendlyVehiclesMessage(level.dimension().location().toString(), team, frame));
         }
     }
     private static String bounded(String text) { return text == null ? "" : text.substring(0, Math.min(128, text.length())); }
+    /** 编制里的地图图标文件名：允许 null（回退车型关键字表），过长直接丢弃。 */
+    private static String boundedIcon(String icon) {
+        if (icon == null) return null;
+        String trimmed = icon.trim();
+        return trimmed.length() > SyncFriendlyVehiclesMessage.MAX_ICON_LENGTH ? null : trimmed;
+    }
 }

@@ -10,12 +10,21 @@ import java.util.function.Supplier;
 /** Only the recipient's team is sent. Types/names are bounded; no entity references cross threads. */
 public record SyncFriendlyVehiclesMessage(String dimension, String team, List<Vehicle> vehicles) {
     public static final int MAX_VEHICLES = 256;
+    /** 编制 JSON map_icon 的文件名长度上限（正常都远小于此值）。 */
+    public static final int MAX_ICON_LENGTH = 64;
     public record Vehicle(UUID id, String type, String name, double x, double z, float yaw,
-                          int passengers, int squadId, boolean loaded) {
+                          int passengers, int squadId, boolean loaded, String mapIcon) {
         public Vehicle {
             if (id == null || type == null || name == null || type.length() > 128 || name.length() > 128
                 || !Double.isFinite(x) || !Double.isFinite(z) || !Float.isFinite(yaw)
-                || passengers < 0 || passengers > 256 || squadId < -1) throw new IllegalArgumentException("Invalid vehicle");
+                || passengers < 0 || passengers > 256 || squadId < -1
+                || (mapIcon != null && mapIcon.length() > MAX_ICON_LENGTH))
+                throw new IllegalArgumentException("Invalid vehicle");
+        }
+        /** 兼容不携带地图图标的旧调用点（map_icon 缺失 = 客户端回退车型关键字表）。 */
+        public Vehicle(UUID id, String type, String name, double x, double z, float yaw,
+                       int passengers, int squadId, boolean loaded) {
+            this(id, type, name, x, z, yaw, passengers, squadId, loaded, null);
         }
     }
     public SyncFriendlyVehiclesMessage {
@@ -30,6 +39,9 @@ public record SyncFriendlyVehiclesMessage(String dimension, String team, List<Ve
             buf.writeUUID(v.id()); buf.writeUtf(v.type(), 128); buf.writeUtf(v.name(), 128);
             buf.writeDouble(v.x()); buf.writeDouble(v.z()); buf.writeFloat(v.yaw());
             buf.writeVarInt(v.passengers()); buf.writeVarInt(v.squadId()); buf.writeBoolean(v.loaded());
+            boolean hasMapIcon = v.mapIcon() != null && !v.mapIcon().isEmpty();
+            buf.writeBoolean(hasMapIcon);
+            if (hasMapIcon) buf.writeUtf(v.mapIcon(), MAX_ICON_LENGTH);
         }
     }
     public static SyncFriendlyVehiclesMessage decode(FriendlyByteBuf buf) {
@@ -40,7 +52,8 @@ public record SyncFriendlyVehiclesMessage(String dimension, String team, List<Ve
         var ids = new java.util.HashSet<UUID>();
         for (int i = 0; i < count; i++) {
             var v = new Vehicle(buf.readUUID(), buf.readUtf(128), buf.readUtf(128), buf.readDouble(),
-                buf.readDouble(), buf.readFloat(), buf.readVarInt(), buf.readVarInt(), buf.readBoolean());
+                buf.readDouble(), buf.readFloat(), buf.readVarInt(), buf.readVarInt(), buf.readBoolean(),
+                buf.readBoolean() ? buf.readUtf(MAX_ICON_LENGTH) : null);
             if (!ids.add(v.id())) throw new IllegalArgumentException("Duplicate vehicle");
             vehicles.add(v);
         }
