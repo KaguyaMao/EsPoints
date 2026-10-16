@@ -42,6 +42,7 @@ import net.minecraft.world.level.saveddata.maps.MapDecoration;
 import net.minecraftforge.client.gui.overlay.ForgeGui;
 import net.minecraftforge.client.gui.overlay.IGuiOverlay;
 import net.minecraftforge.client.event.InputEvent;
+import net.minecraftforge.client.event.RenderGuiEvent;
 import net.minecraftforge.client.event.ScreenEvent;
 
 import net.minecraftforge.common.MinecraftForge;
@@ -513,6 +514,31 @@ public class TacticalMapHUD implements IGuiOverlay {
 
     @Override
     public void render(ForgeGui gui, GuiGraphics guiGraphics, float partialTick, int screenWidth, int screenHeight) {
+        renderMinimapHud(guiGraphics, partialTick, screenWidth, screenHeight);
+    }
+
+    /**
+     * V 键小地图置顶绘制。
+     *
+     * <p>层级语义（Forge 1.20.1）：{@code RenderGuiEvent.Post} 是在 {@code ForgeGui} 画完全部
+     * {@code IGuiOverlay}（含其它模组的叠加层）之后才 post 的，而 Forge 事件总线的
+     * {@code priority} 数值越大越<strong>先</strong>执行，所以「最后画 = 最上层」要用
+     * {@link EventPriority#LOWEST}（最低优先级），而不是 HIGHEST。Espetro 自己的 HUD
+     * （补给 / 工事 / 教程等）就是在 {@code RenderGuiEvent.Post} 的默认优先级上绘制的，
+     * 只有 LOWEST 才能稳定盖在它们之上。</p>
+     *
+     * <p>只影响 V 键小地图：J 菜单里的内嵌大地图由 Screen 内部调用
+     * {@link #renderEmbeddedMap} 绘制，层级仍由 Screen 自己决定，不经过这里。</p>
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onRenderMinimapTopmost(RenderGuiEvent.Post event) {
+        GuiGraphics guiGraphics = event.getGuiGraphics();
+        renderMinimapHud(guiGraphics, event.getPartialTick(),
+            guiGraphics.guiWidth(), guiGraphics.guiHeight());
+    }
+
+    /** 小地图绘制主体：IGuiOverlay 入口与置顶的 Post 回调共用这一份实现。 */
+    private void renderMinimapHud(GuiGraphics guiGraphics, float partialTick, int screenWidth, int screenHeight) {
         if (mapFullyHidden()) {
             return;
         }
@@ -535,6 +561,19 @@ public class TacticalMapHUD implements IGuiOverlay {
         guiGraphics.fill(annoLeft, annoY, annoLeft + mapWidth, annoY + 1, 0x80FFFFFF);
         drawMapText(guiGraphics, currentGridLabel() + "  ctrl+滚轮缩放地图",
             annoLeft, annoY + 3, 0xFFEAFBF7);
+        // 同一行最右侧：己方票数（固定「进攻方/防守方:攻/守」顺序），右对齐贴住小地图右缘。
+        drawTroopCountRightAligned(guiGraphics, annoLeft, annoY + 3, mapWidth);
+    }
+
+    /** 注释行最右侧的票数文本：右对齐贴住小地图右缘，颜色比左侧说明略淡。 */
+    private void drawTroopCountRightAligned(GuiGraphics guiGraphics, int annoLeft, int textY, int mapWidth) {
+        String troopCountLine = EspetroTeamBridge.getTroopCountLine();
+        if (troopCountLine == null || troopCountLine.isEmpty()) {
+            return;
+        }
+        float scale = getMapTextScale();
+        int textWidth = Math.round(Minecraft.getInstance().font.width(troopCountLine) * scale);
+        drawMapText(guiGraphics, troopCountLine, annoLeft + mapWidth - textWidth, textY, 0xFFAFC3C7);
     }
 
     /** 玩家所在地图网格坐标，例如 (F,1,1,1)。 */
@@ -1407,6 +1446,11 @@ public class TacticalMapHUD implements IGuiOverlay {
         var gridHover = markerHoverEnabled
             ? grid.address(gridView.worldX(markerHoverMouseX), gridView.worldZ(markerHoverMouseY)).orElse(null) : null;
         if (config.showGrid) TacticalMapGridRenderer.drawGrid(guiGraphics, grid, gridView, gridHover);
+        // 坐标尺与所属地图同层：跟着网格在同一 scissor / 同一 pose 里画，不再等到地图内容之后。
+        // 于是小地图的尺子随小地图、J 菜单大地图的尺子随该大地图，也不会盖住地图内容。
+        if (config.showGrid && !markerWheel.active()) {
+            TacticalMapGridRenderer.drawRuler(guiGraphics, grid, gridView);
+        }
 
         String localTeam = EspetroTeamBridge.getPlayerTeam(player);
 
@@ -1443,7 +1487,7 @@ public class TacticalMapHUD implements IGuiOverlay {
 
         renderSelectedDeploymentFrame(guiGraphics, content);
 
-        // 右键菜单（标点轮盘）打开时不画坐标刻度：它们会盖住菜单，且此时也不需要坐标。
+        // 右键菜单（标点轮盘）打开时不画悬停数字/提示框：它们会盖住菜单，且此时也不需要坐标。
         if (config.showGrid && !markerWheel.active()) {
             TacticalMapGridRenderer.drawChrome(guiGraphics, grid, gridView, gridHover, markerHoverMouseX, markerHoverMouseY,
                 hoveredMapMarker == null ? null : "标记 X: " + hoveredMapMarker.x + "  Z: " + hoveredMapMarker.z,

@@ -26,6 +26,9 @@ public final class EspetroTeamBridge {
     private static final String ESPETRO_CLIENT_GAME_STATE_CLASS_NAME = "org.espetro.client.gui.ClientGameState";
     private static final String ESPETRO_CLIENT_TACTICAL_STATE_CLASS_NAME =
         "org.espetro.client.gui.ClientTacticalState";
+    /** 客户端票数缓存：由既有的 TroopCountSyncPacket 写入（未新增协议字段）。 */
+    private static final String ESPETRO_TROOP_COUNT_CLASS_NAME =
+        "org.espetro.client.gui.TroopCountOverlay";
     private static final int DEFAULT_TEAMMATE_COLOR = 0xFFFFFFFF;
 
     private EspetroTeamBridge() {
@@ -260,6 +263,33 @@ public final class EspetroTeamBridge {
         } catch (ReflectiveOperationException ignored) {
             return -1;
         }
+    }
+
+    /**
+     * 客户端己方票数行：固定按「进攻方/防守方:攻/守」顺序返回两个数字，
+     * 例如 {@code 进攻方/防守方:1234/1100}。
+     *
+     * <p>注意不能用服务端 {@code TroopCountManager#getAttackTroops()/getDefendTroops()}：
+     * 它们读的是服务端记分板，客户端调用只会得到 0。客户端数据由既有的
+     * {@code TroopCountSyncPacket} 写进 {@code TroopCountOverlay}，
+     * 这里反射该客户端缓存的两个 getter 与既有的 {@code isVisible()}。</p>
+     *
+     * @return Espetro 版本较旧（没有这些 getter）或本局还没同步到票数时返回 null，调用方不显示。
+     */
+    public static String getTroopCountLine() {
+        Boolean visible = invokeStaticBooleanIfPresent(
+            ESPETRO_TROOP_COUNT_CLASS_NAME, "isVisible", new Class<?>[0]);
+        if (!Boolean.TRUE.equals(visible)) {
+            return null;
+        }
+        Integer attack = invokeStaticIntIfPresent(
+            ESPETRO_TROOP_COUNT_CLASS_NAME, "getAttackTroops", new Class<?>[0]);
+        Integer defend = invokeStaticIntIfPresent(
+            ESPETRO_TROOP_COUNT_CLASS_NAME, "getDefendTroops", new Class<?>[0]);
+        if (attack == null || defend == null) {
+            return null;
+        }
+        return "进攻方/防守方:" + attack + "/" + defend;
     }
 
     /** 公开：是否小队长（服务端）。 */

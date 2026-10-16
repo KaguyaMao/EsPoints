@@ -92,7 +92,12 @@ public class ESPointsMod {
             event.registerBelowAll("capture_point_hud", capturePointHUD);
             event.registerBelowAll("area_info_hud", areaInfoHUD);
             event.registerBelowAll("current_capture_point_hud", currentCapturePointHUD);
-            event.registerBelowAll("tactical_map_hud", com.example.espoints.hud.TacticalMapHUD.getInstance());
+            // V 键小地图不在这里注册 overlay：Forge 的 overlay 列表只能保证「排在其它 overlay 之后」，
+            // 而 Espetro 等模组的 HUD 是在 RenderGuiEvent.Post（整个 overlay 循环之后）绘制的，
+            // overlay 排得再靠后也盖不住它们。因此小地图改由
+            // TacticalMapHUD#onRenderMinimapTopmost（RenderGuiEvent.Post + EventPriority.LOWEST）绘制；
+            // 这里仍提前实例化，确保它在 Forge 事件总线上注册好渲染与滚轮回调。
+            com.example.espoints.hud.TacticalMapHUD.getInstance();
             event.registerBelowAll("reinforcements_hud", reinforcementsHUD);
             event.registerBelowAll("message_popup", messagePopup);
         }

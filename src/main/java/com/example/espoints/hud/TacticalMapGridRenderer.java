@@ -55,6 +55,17 @@ public final class TacticalMapGridRenderer {
         if (fill) g.fill(l, t, r, b, color);
         else g.renderOutline(l, t, r - l, b - t, color);
     }
+    /**
+     * 坐标尺（上方列号 + 左侧行号）单独暴露，由「地图本体」在自己的绘制上下文里调用：
+     * 与地图同一次绘制、同一 scissor、同一 pose，不引入新的叠加层。
+     */
+    public static void drawRuler(GuiGraphics g, TacticalMapGrid grid, View v) {
+        RadialUiText.beginFrame();
+        final int ruler = 13;
+        // 需求：取消上方/左侧大格坐标的背景色（不再画刻度条底色）
+        rulerLabels(g, grid, v, true, ruler);
+        rulerLabels(g, grid, v, false, ruler);
+    }
     public static void drawChrome(GuiGraphics g, TacticalMapGrid grid, View v, TacticalMapGrid.Address hover,
                                   double mouseX, double mouseY, String markerCoordinates, boolean interactive) {
         RadialUiText.beginFrame();
@@ -66,10 +77,6 @@ public final class TacticalMapGridRenderer {
             numbers(g, grid, v, grid.largeX(hover), grid.largeZ(hover), TacticalMapGrid.MEDIUM, 0xFFB6D9DA, smallNumbers ? hover.medium() : -1,tooltip);
             numbers(g, grid, v, grid.mediumX(hover), grid.mediumZ(hover), TacticalMapGrid.SMALL, 0xFFE4FFF8, -1,tooltip);
         }
-        final int ruler = 13;
-        // 需求：取消上方/左侧大格坐标的背景色（不再画刻度条底色）
-        rulerLabels(g, grid, v, true, ruler);
-        rulerLabels(g, grid, v, false, ruler);
         if (tooltip == null) return;
         int x=tooltip.x(), y=tooltip.y(), width=tooltip.width(), height=tooltip.height();
         String label=tooltip.label(), detail=tooltip.detail();
