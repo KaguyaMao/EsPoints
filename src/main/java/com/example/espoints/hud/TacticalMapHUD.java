@@ -1446,11 +1446,6 @@ public class TacticalMapHUD implements IGuiOverlay {
         var gridHover = markerHoverEnabled
             ? grid.address(gridView.worldX(markerHoverMouseX), gridView.worldZ(markerHoverMouseY)).orElse(null) : null;
         if (config.showGrid) TacticalMapGridRenderer.drawGrid(guiGraphics, grid, gridView, gridHover);
-        // 坐标尺与所属地图同层：跟着网格在同一 scissor / 同一 pose 里画，不再等到地图内容之后。
-        // 于是小地图的尺子随小地图、J 菜单大地图的尺子随该大地图，也不会盖住地图内容。
-        if (config.showGrid && !markerWheel.active()) {
-            TacticalMapGridRenderer.drawRuler(guiGraphics, grid, gridView);
-        }
 
         String localTeam = EspetroTeamBridge.getPlayerTeam(player);
 
@@ -1486,6 +1481,15 @@ public class TacticalMapHUD implements IGuiOverlay {
         }
 
         renderSelectedDeploymentFrame(guiGraphics, content);
+
+        // 坐标尺是本地图绘制流程里最后画的一层（仍是同一次 scissor / 同一 pose），所以压在
+        // 据点 / 玩家 / 载具 / 标记 / 火炮覆盖区等全部地图内容之上，不会互相闪烁。
+        // 小地图（content.top == mapTop）与 J 菜单大地图（content.top == mapTop + 标题带）
+        // 共用 renderBirdsEyeView 这一处，因此两张图的「尺子 + 地图」层级关系完全一致；
+        // 这里没有新建叠加层，也没有新增事件订阅。
+        if (config.showGrid && !markerWheel.active()) {
+            TacticalMapGridRenderer.drawRuler(guiGraphics, grid, gridView);
+        }
 
         // 右键菜单（标点轮盘）打开时不画悬停数字/提示框：它们会盖住菜单，且此时也不需要坐标。
         if (config.showGrid && !markerWheel.active()) {
